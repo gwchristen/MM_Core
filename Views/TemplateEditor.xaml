@@ -1,0 +1,234 @@
+<UserControl
+    x:Class="CmdRunnerPro.Views.TemplateEditor"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:md="http://materialdesigninxaml.net/winfx/xaml/themes"
+    xmlns:sys="clr-namespace:System;assembly=mscorlib"
+    xmlns:util="clr-namespace:CmdRunnerPro.Utilities">
+
+    <UserControl.InputBindings>
+        <KeyBinding Key="Escape"
+                    Command="{x:Static md:DialogHost.CloseDialogCommand}"
+                    CommandParameter="Cancel"/>
+        <KeyBinding Key="Enter" Modifiers="Control"
+                    Command="{x:Static md:DialogHost.CloseDialogCommand}"
+                    CommandParameter="{Binding}"/>
+    </UserControl.InputBindings>
+
+    <Grid Margin="24" md:ValidationAssist.UsePopup="True">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="320"/>
+            <!-- Quick Add -->
+            <ColumnDefinition Width="*"/>
+            <!-- Main Editor -->
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition/>
+            <!-- Main Content -->
+            <RowDefinition Height="Auto"/>
+            <!-- Footer -->
+        </Grid.RowDefinitions>
+
+
+        <!-- Quick Add Section -->
+        <Border Grid.Column="0" Grid.Row="0" Margin="0,0,16,0" Padding="12"
+        BorderThickness="1" CornerRadius="4"
+        BorderBrush="{DynamicResource MaterialDesignDivider}">
+
+            <DockPanel LastChildFill="True">
+                <StackPanel DockPanel.Dock="Top">
+                    <TextBlock Text="Quick Add" FontWeight="SemiBold" Margin="0,0,0,8" />
+
+                    <Expander Header="Quick Add Tokens"
+                IsExpanded="{Binding IsQuickAddTokensExpanded, Mode=TwoWay}"
+                Margin="0,0,0,8">
+
+                        <!-- Controls row -->
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,8">
+                                <!-- NOTE: escape braces with {} so it's literal text -->
+                                <ToggleButton
+              Content="{}Use {Q:...}"
+              IsChecked="{Binding UseQuotedTokens}"
+              Style="{DynamicResource MaterialDesignFilterChipToggleButton}"
+              Margin="0,0,8,0" />
+
+                                <!-- Optional: keep a plain checkbox too (same property), as a sibling -->
+                                <CheckBox Content="Auto-quote tokens when needed"
+                      IsChecked="{Binding UseQuotedTokens}"
+                      VerticalAlignment="Center" />
+                            </StackPanel>
+
+                            <!-- Token buttons -->
+                            <WrapPanel>
+                                <Button Content="COM1" Margin="0,0,8,8"
+                    Command="{Binding AddTokenCommand}" CommandParameter="comport1" />
+                                <Button Content="COM2" Margin="0,0,8,8"
+                    Command="{Binding AddTokenCommand}" CommandParameter="comport2" />
+                                <Button Content="Username" Margin="0,0,8,8"
+                    Command="{Binding AddTokenCommand}" CommandParameter="username" />
+                                <Button Content="Password" Margin="0,0,8,8"
+                    Command="{Binding AddTokenCommand}" CommandParameter="password" />
+                                <Button Content="Opco" Margin="0,0,8,8"
+                    Command="{Binding AddTokenCommand}" CommandParameter="opco" />
+                                <Button Content="Program" Margin="0,0,8,8"
+                    Command="{Binding AddTokenCommand}" CommandParameter="program" />
+                                <Button Content="WD" Margin="0,0,8,8"
+                    Command="{Binding AddTokenCommand}" CommandParameter="wd" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Expander>
+                </StackPanel>
+
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding QuickAddCategories}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Expander IsExpanded="{Binding IsExpanded, Mode=TwoWay}" Margin="0,0,0,8">
+
+                                    <Expander.Header>
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                                    </Expander.Header>
+
+                                    <ItemsControl ItemsSource="{Binding Items}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Button Margin="0,0,0,6"
+                                                        HorizontalContentAlignment="Left"
+                                                        Content="{Binding Name}"
+                                                        ToolTip="{Binding Description}"
+                                                        Command="{Binding DataContext.AddSnippetCommand,
+                                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"/>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                </Expander>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+
+        <!-- Main Editor Section -->
+        <ScrollViewer Grid.Column="1" Grid.Row="0" VerticalScrollBarVisibility="Auto">
+            <StackPanel Orientation="Vertical" Margin="0,0,0,16">
+                <TextBox
+                    md:HintAssist.Hint="Template Name"
+                    Text="{Binding Name, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, NotifyOnValidationError=True}"/>
+
+                <TextBox
+                    Margin="0,12,0,0"
+                    md:HintAssist.Hint="Template Text (supports tokens like {comport1}, {username}, {Q:program})"
+                    AcceptsReturn="True"
+                    TextWrapping="Wrap"
+                    Height="140"
+                    VerticalScrollBarVisibility="Auto"
+                    Text="{Binding Template, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, NotifyOnValidationError=True}"/>
+
+                <GroupBox Header="MeterMate" Visibility="{Binding MeterMateVisibility}">
+                    <!-- MeterMate UI -->
+                </GroupBox>
+
+                <GroupBox Header="Other Quick Add" Visibility="{Binding OtherQuickAddVisibility}">
+                    <!-- Other UI -->
+                </GroupBox>
+
+                <GroupBox Header="Preview Inputs (optional)" Margin="0,16,0,0">
+                    <DockPanel LastChildFill="False">
+                        <StackPanel Orientation="Horizontal" Margin="8">
+                            <ComboBox Width="130"
+                                      md:HintAssist.Hint="COM1"
+                                      ItemsSource="{Binding ComPortOptions}"
+                                      SelectedItem="{Binding SelectedCom1, UpdateSourceTrigger=PropertyChanged}"
+                                      Margin="0,0,8,0"/>
+                            <ComboBox Width="130"
+                                      md:HintAssist.Hint="COM2"
+                                      ItemsSource="{Binding ComPortOptions}"
+                                      SelectedItem="{Binding SelectedCom2, UpdateSourceTrigger=PropertyChanged}"
+                                      Margin="0,0,8,0"/>
+                            <TextBox Width="150"
+                                     md:HintAssist.Hint="Username"
+                                     Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,0,8,0"/>
+                            <TextBox Width="150"
+                                     md:HintAssist.Hint="Opco"
+                                     Text="{Binding Opco, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,0,8,0"/>
+                            <TextBox Width="160"
+                                     md:HintAssist.Hint="Program"
+                                     Text="{Binding Program, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,0,8,0"/>
+
+                            <PasswordBox Width="160"
+                                         md:HintAssist.Hint="Password"
+                                         util:PasswordBoxHelper.BindPassword="True"
+                                         util:PasswordBoxHelper.BoundPassword="{Binding Password, 
+                            UpdateSourceTrigger=PropertyChanged}" />
+
+                        </StackPanel>
+                    </DockPanel>
+                </GroupBox>
+                
+                <GroupBox Header="Preview: Tokens in Use" Margin="0,12,0,0">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding UsedTokens}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Margin="4" Padding="8,4" CornerRadius="12"
+                                            Background="#22000000"
+                                            BorderBrush="#33000000" BorderThickness="1">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
+                                            <TextBlock Text=": " Margin="4,0,0,0" />
+                                            <TextBlock Text="{Binding SampleValue}" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </GroupBox>
+
+                <GroupBox Header="Preview (token expansion)" Margin="0,12,0,0">
+                    <ScrollViewer Height="100" VerticalScrollBarVisibility="Auto">
+                        <TextBlock Text="{Binding Preview}" TextWrapping="Wrap"/>
+                    </ScrollViewer>
+                </GroupBox>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Footer -->
+        <DockPanel Grid.Row="1" Grid.ColumnSpan="2" Margin="0,8,0,0" LastChildFill="False">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <StackPanel.Resources>
+                    <Style TargetType="{x:Type Button}">
+                        <Setter Property="Margin" Value="0,0,8,0"/>
+                    </Style>
+                </StackPanel.Resources>
+
+                <Button
+                    Content="Cancel"
+                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                    Command="{x:Static md:DialogHost.CloseDialogCommand}"
+                    CommandParameter="Cancel" />
+
+                <Button
+                    Content="Save"
+                    Margin="0"
+                    IsDefault="True"
+                    Style="{StaticResource MaterialDesignRaisedButton}"
+                    IsEnabled="{Binding CanSave}"
+                    Command="{x:Static md:DialogHost.CloseDialogCommand}"
+                    CommandParameter="{Binding}" />
+            </StackPanel>
+        </DockPanel>
+    </Grid>
+</UserControl>

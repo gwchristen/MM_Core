@@ -1,0 +1,21 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>false</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>CmdRunnerPro</AssemblyName>
+    <RootNamespace>CmdRunnerPro</RootNamespace>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MaterialDesignThemes" Version="5.*" />
+    <PackageReference Include="Ookii.Dialogs.Wpf" Version="5.0.1" />
+    <PackageReference Include="System.IO.Ports" Version="8.*" />
+  </ItemGroup>
+
+</Project>
