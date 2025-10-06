@@ -1,6 +1,7 @@
 ﻿// Models/Template.cs
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System;
 
 // If you use System.Text.Json (default in .NET 8):
 using System.Text.Json.Serialization;

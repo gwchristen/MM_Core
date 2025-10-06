@@ -1,4 +1,6 @@
 using System.Windows.Controls;
+using System.Windows;
+using CmdRunnerPro.ViewModels;
 
 namespace CmdRunnerPro.Views
 {
@@ -7,8 +9,28 @@ namespace CmdRunnerPro.Views
         public TemplateEditor()
         {
             InitializeComponent();
-            // Assumes parent window's DataContext is MainViewModel; user control reuses it.
-            DataContext = System.Windows.Application.Current.MainWindow?.DataContext;
+            // Hook after load so the element names exist.
+            this.Loaded += (_, __) =>
+            {
+                var combo = this.FindName("TemplatesCombo") as ComboBox;
+                if (combo != null)
+                {
+                    combo.SelectionChanged -= TemplatesCombo_SelectionChanged;
+                    combo.SelectionChanged += TemplatesCombo_SelectionChanged;
+                }
+            };
+        }
+
+        private void TemplatesCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (DataContext is TemplateEditorViewModel vm)
+            {
+                var selected = (sender as ComboBox)?.SelectedItem;
+                if (selected != null)
+                {
+                    vm.LoadFrom(selected);
+                }
+            }
         }
     }
 }

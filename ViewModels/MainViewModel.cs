@@ -1,8 +1,7 @@
 // ViewModels/MainViewModel.cs
-using CmdRunnerPro.Models;             // Template, InputPreset
-using CmdRunnerPro.Views;              // TemplateEditor (UserControl)
-using MaterialDesignColors;            // SwatchHelper
-using MaterialDesignThemes.Wpf;        // PaletteHelper, DialogHost
+using CmdRunnerPro.Models;           // Template, InputPreset
+using CmdRunnerPro.Views;            // TemplateEditor (UserControl)
+using MaterialDesignThemes.Wpf;      // DialogHost, BaseTheme, PaletteHelper
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -16,15 +15,10 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows.Documents;
+using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
-using static System.Windows.Forms.VisualStyles.VisualStyleElement.TrayNotify;
-using MC = MaterialDesignColors;
-using MD = MaterialDesignThemes.Wpf;
 using WinForms = System.Windows.Forms;
-using System.Windows;
-
 
 namespace CmdRunnerPro.ViewModels
 {
@@ -34,7 +28,7 @@ namespace CmdRunnerPro.ViewModels
         private Process _currentProcess;
         private CancellationTokenSource _runCts;
 
-        // Settings persistence (theme + timestamps)
+        // App settings (theme + timestamps)
         private readonly string _configDir;
         private readonly string _themeSettingsPath;
         #endregion
@@ -52,11 +46,12 @@ namespace CmdRunnerPro.ViewModels
             StopCommand = new RelayCommand(Stop, () => _currentProcess != null && !_currentProcess.HasExited);
             BrowseWorkingDirectoryCommand = new RelayCommand(BrowseWorkingDirectory);
 
-            NewTemplateCommand = new RelayCommand(NewTemplate);
-            CloneTemplateCommand = new RelayCommand(CloneTemplate, () => SelectedTemplate != null);
-            DeleteTemplateCommand = new RelayCommand(DeleteTemplate, () => SelectedTemplate != null);
+            NewTemplateCommand = new RelayCommand(async () => await NewTemplateAsync());
+            CloneTemplateCommand = new RelayCommand(async () => await CloneTemplateAsync(), () => SelectedTemplate != null);
+            DeleteTemplateCommand = new RelayCommand(async () => await DeleteTemplateAsync(), () => SelectedTemplate != null);
+            OpenTemplateEditorCommand = new RelayCommand(async () => await EditOrCreateTemplateAsync() );
+            EditTemplateCommand = new RelayCommand(async () => await EditOrCreateTemplateAsync() );                                                         
 
-            OpenTemplateEditorCommand = new RelayCommand(OpenTemplateEditor, () => SelectedTemplate != null);
 
             SavePresetCommand = new RelayCommand(SavePreset, () => true);
             SavePresetAsCommand = new RelayCommand(SavePresetAs, () => true);
@@ -64,24 +59,22 @@ namespace CmdRunnerPro.ViewModels
 
             // Initialize data
             RefreshPorts();
-            SeedData();
-
-
+            _ = LoadTemplatesAsync();      // fire-and-forget; ctor cannot be async
             LoadPresetsFromDisk();
             LoadLastUsed();
 
-            // Load persisted theme + ShowTimestamps (or defaults), then apply theme
-            LoadThemeSettings();   // sets backing fields + Settings.ShowTimestamps
+            // Persisted theme (minimal & resilient)
+            LoadThemeSettings();
             ApplyTheme();
 
-            // Save theme when ShowTimestamps changes (keep in same file)
+            // Save theme when ShowTimestamps changes (kept in same file)
             Settings.PropertyChanged += (s, e) =>
             {
                 if (e.PropertyName == nameof(SettingsViewModel.ShowTimestamps))
                     SaveThemeSettings();
             };
 
-            // Make preview reflect current defaults
+            // Initial preview
             UpdateTemplatePreview();
         }
         #endregion
@@ -103,7 +96,7 @@ namespace CmdRunnerPro.ViewModels
                 if (Set(ref _selectedTemplate, value))
                 {
                     RaiseCommandCanExecuteChanged();
-                    UpdateTemplatePreview();   // recompute preview
+                    UpdateTemplatePreview(); // recompute preview
                 }
             }
         }
@@ -144,6 +137,42 @@ namespace CmdRunnerPro.ViewModels
             get => _comPortOptions;
             set => Set(ref _comPortOptions, value);
         }
+
+        public string SelectedCom1
+        {
+            get => _selectedCom1;
+            set { if (Set(ref _selectedCom1, value)) { UpdateTemplatePreview(); SaveLastUsed(); } }
+        }
+        public string SelectedCom2
+        {
+            get => _selectedCom2;
+            set { if (Set(ref _selectedCom2, value)) { UpdateTemplatePreview(); SaveLastUsed(); } }
+        }
+        public string Username
+        {
+            get => _username;
+            set { if (Set(ref _username, value)) { UpdateTemplatePreview(); SaveLastUsed(); } }
+        }
+        public string Password
+        {
+            get => _password;
+            set { if (Set(ref _password, value)) { UpdateTemplatePreview(); SaveLastUsed(); } }
+        }
+        public string Opco
+        {
+            get => _opco;
+            set { if (Set(ref _opco, value)) { UpdateTemplatePreview(); SaveLastUsed(); } }
+        }
+        public string Program
+        {
+            get => _program;
+            set { if (Set(ref _program, value)) { UpdateTemplatePreview(); SaveLastUsed(); } }
+        }
+        public string WorkingDirectory
+        {
+            get => _workingDirectory;
+            set { if (Set(ref _workingDirectory, value)) { UpdateTemplatePreview(); SaveLastUsed(); } }
+        }
         #endregion
 
         #region Preview + Output
@@ -157,15 +186,11 @@ namespace CmdRunnerPro.ViewModels
             private set => Set(ref _templateContent, value);
         }
 
-        /// <summary>
-        /// Live output lines for the right-side ListBox.
-        /// </summary>
+        /// <summary>Live output lines for the right-side ListBox.</summary>
         public ObservableCollection<string> OutputLines { get; } = new();
 
         private string _outputLog;
-        /// <summary>
-        /// Legacy whole-log string; kept for compatibility if other parts of the app rely on it.
-        /// </summary>
+        /// <summary>Legacy whole-log string; kept for compatibility.</summary>
         public string OutputLog
         {
             get => _outputLog;
@@ -175,16 +200,12 @@ namespace CmdRunnerPro.ViewModels
         private void AppendOutput(string text)
         {
             if (string.IsNullOrEmpty(text)) return;
-
             string line = Settings?.ShowTimestamps == true
                 ? $"[{DateTime.Now:HH:mm:ss}] {text}"
                 : text;
 
             OutputLines.Add(line);
-
-            OutputLog = string.IsNullOrEmpty(OutputLog)
-                ? line
-                : $"{OutputLog}{Environment.NewLine}{line}";
+            OutputLog = string.IsNullOrEmpty(OutputLog) ? line : $"{OutputLog}{Environment.NewLine}{line}";
         }
         #endregion
 
@@ -194,6 +215,7 @@ namespace CmdRunnerPro.ViewModels
         public ICommand StopCommand { get; }
         public ICommand BrowseWorkingDirectoryCommand { get; }
         public ICommand OpenTemplateEditorCommand { get; }
+        public ICommand EditTemplateCommand { get; }   // <— alias for XAML that still uses "Edit"
         public ICommand NewTemplateCommand { get; }
         public ICommand CloneTemplateCommand { get; }
         public ICommand DeleteTemplateCommand { get; }
@@ -207,6 +229,7 @@ namespace CmdRunnerPro.ViewModels
             (RunCommand as RelayCommand)?.RaiseCanExecuteChanged();
             (StopCommand as RelayCommand)?.RaiseCanExecuteChanged();
             (OpenTemplateEditorCommand as RelayCommand)?.RaiseCanExecuteChanged();
+            (EditTemplateCommand as RelayCommand)?.RaiseCanExecuteChanged();   // <— add this line
             (NewTemplateCommand as RelayCommand)?.RaiseCanExecuteChanged();
             (CloneTemplateCommand as RelayCommand)?.RaiseCanExecuteChanged();
             (DeleteTemplateCommand as RelayCommand)?.RaiseCanExecuteChanged();
@@ -236,7 +259,7 @@ namespace CmdRunnerPro.ViewModels
             WorkingDirectory = preset.WorkingDirectory;
 
             UpdateTemplatePreview();
-            SaveLastUsed(); // remember what we just loaded
+            SaveLastUsed();
         }
         #endregion
 
@@ -253,10 +276,7 @@ namespace CmdRunnerPro.ViewModels
                 AppendOutput($"--- Running template: {SelectedTemplate.Name} ---");
 
                 var command = ExpandTokens(SelectedTemplate.TemplateText, buildRuntimeTokenMap());
-
-                var wd = string.IsNullOrWhiteSpace(WorkingDirectory)
-                    ? Environment.CurrentDirectory
-                    : WorkingDirectory;
+                var wd = string.IsNullOrWhiteSpace(WorkingDirectory) ? Environment.CurrentDirectory : WorkingDirectory;
 
                 var psi = new ProcessStartInfo
                 {
@@ -270,17 +290,8 @@ namespace CmdRunnerPro.ViewModels
                 };
 
                 _currentProcess = new Process { StartInfo = psi, EnableRaisingEvents = true };
-
-                _currentProcess.OutputDataReceived += (_, e) =>
-                {
-                    if (e.Data != null) AppendOutput(e.Data);
-                };
-
-                _currentProcess.ErrorDataReceived += (_, e) =>
-                {
-                    if (e.Data != null) AppendOutput("[ERR] " + e.Data);
-                };
-
+                _currentProcess.OutputDataReceived += (_, e) => { if (e.Data != null) AppendOutput(e.Data); };
+                _currentProcess.ErrorDataReceived += (_, e) => { if (e.Data != null) AppendOutput("[ERR] " + e.Data); };
                 _currentProcess.Exited += (_, __) =>
                 {
                     AppendOutput($"--- Process exited (Code: {_currentProcess.ExitCode}) ---");
@@ -309,10 +320,8 @@ namespace CmdRunnerPro.ViewModels
             {
                 _runCts?.Dispose();
                 _runCts = null;
-
                 _currentProcess?.Dispose();
                 _currentProcess = null;
-
                 RaiseCommandCanExecuteChanged();
             }
         }
@@ -353,68 +362,29 @@ namespace CmdRunnerPro.ViewModels
         #endregion
 
         #region Template Editor (DialogHost, Identifier="RootDialog")
-        private async void OpenTemplateEditor() => await OpenTemplateEditorAsync(SelectedTemplate);
-
-        private async Task OpenTemplateEditorAsync(Template template)
+        private async Task EditOrCreateTemplateAsync()
         {
-            if (template is null) return;
+            // If nothing is selected, create an in-memory draft (not added/persisted until user saves)
+            bool isNew = SelectedTemplate is null;
+            var template = isNew
+                ? new Template { Name = UniqueName("New Template"), TemplateText = "" }
+                : SelectedTemplate;
 
-            var oldName = template.Name;
+            var originalName = template.Name;
 
-            var existingNames = new HashSet<string>(
-                Templates.Where(t => !ReferenceEquals(t, template))
-                         .Select(t => t.Name),
-                StringComparer.OrdinalIgnoreCase);
-
-            var editor = new TemplateEditor();
             var vm = new TemplateEditorViewModel(
                 originalTemplate: template,
                 name: template.Name,
                 template: template.TemplateText,
                 comPortOptions: ComPortOptions,
-                nameExists: n => existingNames.Contains(n?.Trim() ?? "")
-            );
-            editor.DataContext = vm;
-
-            var result = await DialogHost.Show(editor, "RootDialog");
-            if (result is TemplateEditorViewModel saved)
-            {
-                saved.ApplyTo(template);
-                OnPropertyChanged(nameof(Templates));
-                OnPropertyChanged(nameof(SelectedTemplate));
-
-                if (!string.Equals(oldName, template.Name, StringComparison.OrdinalIgnoreCase))
+                nameExists: name =>
                 {
-                    RenameTemplateInReferences(oldName, template.Name);
-                }
-
-                UpdateTemplatePreview();
-            }
-        }
-        #endregion
-
-        // Example: adjust type/props to your real Template model
-        public class Template
-        {
-            public Guid Id { get; set; }
-            public string Name { get; set; }
-            public string TemplateText { get; set; }
-        }
-
-        // Where you open the editor dialog:
-        public async Task EditSelectedTemplateAsync()
-        {
-            if (SelectedTemplate is null) return;
-
-            var vm = new TemplateEditorViewModel(
-                originalTemplate: SelectedTemplate,
-                name: SelectedTemplate.Name,
-                template: SelectedTemplate.TemplateText,
-                //comPortOptions: AvailableComPorts,
-                nameExists: name => Templates.Any(t =>
-                    !ReferenceEquals(t, SelectedTemplate) &&
-                    string.Equals(t.Name, name, StringComparison.OrdinalIgnoreCase))
-            );
+                    // If editing an existing item, exclude that one from duplicate checks; otherwise check all
+                    if (!isNew)
+                        return Templates.Any(t => !ReferenceEquals(t, template) &&
+                                                  string.Equals(t.Name, name, StringComparison.OrdinalIgnoreCase));
+                    return Templates.Any(t => string.Equals(t.Name, name, StringComparison.OrdinalIgnoreCase));
+                });
 
             var view = new TemplateEditor { DataContext = vm };
             var result = await MaterialDesignThemes.Wpf.DialogHost.Show(view, "RootDialog");
@@ -424,43 +394,180 @@ namespace CmdRunnerPro.ViewModels
                 switch (r.Action)
                 {
                     case TemplateEditorResult.EditorAction.Saved:
-                        // Save back the edited original
-                        await SaveTemplateAsync(SelectedTemplate);
-                        break;
+                        {
+                            if (isNew)
+                            {
+                                // Persist new item and add to list
+                                await SaveTemplateAsync(template, originalName: null);
+                                Templates.Add(template);
+                                Reselect(template.Name);
+                            }
+                            else
+                            {
+                                // Rename-aware save (deletes old file if name changed)
+                                await SaveTemplateAsync(template, originalName);
+                                Reselect(template.Name);
+                            }
+                            break;
+                        }
 
                     case TemplateEditorResult.EditorAction.SavedAs:
                         {
-                            // Create a *new* template with new Id + the provided name + text
+                            var newName = UniqueName(string.IsNullOrWhiteSpace(r.Name) ? "New Template" : r.Name.Trim());
                             var copy = new Template
                             {
-                                Id = Guid.NewGuid(),
-                                Name = r.Name?.Trim() ?? "New Template",
+                                Name = newName,
                                 TemplateText = r.TemplateText ?? string.Empty
                             };
 
-                            Templates.Add(copy);
                             await SaveTemplateAsync(copy);
-                            SelectedTemplate = copy;      // select the new one
+                            Templates.Add(copy);
+                            Reselect(copy.Name);
                             break;
                         }
 
                     case TemplateEditorResult.EditorAction.Deleted:
-                        if (await ConfirmAsync($"Delete \"{r.Name}\"?"))
                         {
-                            await DeleteTemplateAsync(SelectedTemplate);
-                            Templates.Remove(SelectedTemplate);
-                            SelectedTemplate = Templates.FirstOrDefault();
+                            // If they opened a draft and then hit Delete, nothing to remove from disk.
+                            if (!isNew)
+                            {
+                                if (!await ConfirmAsync($"Delete \"{template.Name}\"?")) return;
+                                await DeleteTemplateByNameAsync(template.Name);
+                                Templates.Remove(template);
+                                SelectedTemplate = Templates.FirstOrDefault();
+                            }
+                            break;
                         }
-                        break;
 
                     case TemplateEditorResult.EditorAction.Cancelled:
+                    default:
+                        // If draft and cancel, do nothing (it was never added)
+                        break;
+                }
+            }
+
+            // Keep ComboBox sorted
+            Templates = new ObservableCollection<Template>(
+                Templates.OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase));
+        }
+
+        #endregion
+
+            #region Template CRUD helpers (New / Clone / Delete) - name-based storage
+        private async Task NewTemplateAsync()
+        {
+            var draft = new Template { Name = UniqueName("New Template"), TemplateText = "" };
+
+            var vm = new TemplateEditorViewModel(
+                originalTemplate: draft,
+                name: draft.Name,
+                template: draft.TemplateText,
+                comPortOptions: ComPortOptions,
+                nameExists: name => Templates.Any(t => string.Equals(t.Name, name, StringComparison.OrdinalIgnoreCase))
+            );
+
+            var view = new TemplateEditor { DataContext = vm };
+            var result = await DialogHost.Show(view, "RootDialog");
+
+            if (result is TemplateEditorResult r)
+            {
+                switch (r.Action)
+                {
+                    case TemplateEditorResult.EditorAction.Saved:
+                        {
+                            await SaveTemplateAsync(draft, originalName: null);
+                            Templates.Add(draft);
+                            Reselect(draft.Name);
+                            break;
+                        }
+                    case TemplateEditorResult.EditorAction.SavedAs:
+                        {
+                            var newName = UniqueName(string.IsNullOrWhiteSpace(r.Name) ? "New Template" : r.Name.Trim());
+                            var copy = new Template { Name = newName, TemplateText = r.TemplateText ?? string.Empty };
+                            await SaveTemplateAsync(copy);
+                            Templates.Add(copy);
+                            Reselect(copy.Name);
+                            break;
+                        }
                     default:
                         break;
                 }
             }
+
+            Templates = new ObservableCollection<Template>(
+                Templates.OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase));
         }
 
+        private async Task CloneTemplateAsync()
+        {
+            if (SelectedTemplate is null) return;
+
+            var baseName = SelectedTemplate.Name;
+            var proposal = UniqueName(baseName + " (Copy)");
+
+            var clone = new Template
+            {
+                Name = proposal,
+                TemplateText = SelectedTemplate.TemplateText
+            };
+
+            var vm = new TemplateEditorViewModel(
+                originalTemplate: clone,
+                name: clone.Name,
+                template: clone.TemplateText,
+                comPortOptions: ComPortOptions,
+                nameExists: name => Templates.Any(t => string.Equals(t.Name, name, StringComparison.OrdinalIgnoreCase))
+            );
+
+            var view = new TemplateEditor { DataContext = vm };
+            var result = await DialogHost.Show(view, "RootDialog");
+
+            if (result is TemplateEditorResult r)
+            {
+                switch (r.Action)
+                {
+                    case TemplateEditorResult.EditorAction.Saved:
+                        {
+                            await SaveTemplateAsync(clone, originalName: null);
+                            Templates.Add(clone);
+                            Reselect(clone.Name);
+                            break;
+                        }
+                    case TemplateEditorResult.EditorAction.SavedAs:
+                        {
+                            var newName = UniqueName(string.IsNullOrWhiteSpace(r.Name) ? "New Template" : r.Name.Trim());
+                            var copy = new Template { Name = newName, TemplateText = r.TemplateText ?? string.Empty };
+                            await SaveTemplateAsync(copy);
+                            Templates.Add(copy);
+                            Reselect(copy.Name);
+                            break;
+                        }
+                    default:
+                        break;
+                }
+            }
+
+            Templates = new ObservableCollection<Template>(
+                Templates.OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase));
+        }
+
+        private async Task DeleteTemplateAsync()
+        {
+            if (SelectedTemplate is null) return;
+
+            if (!await ConfirmAsync($"Delete template \"{SelectedTemplate.Name}\"?")) return;
+
+            var oldName = SelectedTemplate.Name;
+            await DeleteTemplateByNameAsync(oldName);
+            Templates.Remove(SelectedTemplate);
+            RemoveTemplateFromReferences(oldName);
+            SelectedTemplate = Templates.FirstOrDefault();
+            UpdateTemplatePreview();
+        }
+        #endregion
+
         #region Token Expansion
+        // Matches {token} and {Q:token}
         private static readonly Regex TokenRegex = new(@"\{(Q:)?([^\}]+)\}", RegexOptions.Compiled);
 
         private string ExpandTokens(string template, Func<string, string> resolver)
@@ -472,12 +579,8 @@ namespace CmdRunnerPro.ViewModels
                 bool quote = m.Groups[1].Success;
                 string rawKey = m.Groups[2].Value.Trim();
                 string value = resolver(rawKey);
-                if (value == null)
-                    return m.Value;
-
-                if (quote && value.Contains(' '))
-                    return $"\"{value}\"";
-
+                if (value == null) return m.Value;
+                if (quote && value.Contains(' ')) return $"\"{value}\"";
                 return value;
             });
         }
@@ -494,30 +597,23 @@ namespace CmdRunnerPro.ViewModels
                     case "COM1":
                     case "FIELD3":
                         return SelectedCom1 ?? "";
-
                     case "comport2":
                     case "COM2":
                     case "FIELD4":
                         return SelectedCom2 ?? "";
-
                     case "username":
                     case "FIELD5":
                         return Username ?? "";
-
                     case "password":
                     case "FIELD6":
                         return Password ?? "";
-
                     case "opco":
                         return Opco ?? "";
-
                     case "program":
                         return Program ?? "";
-
                     case "wd":
                     case "WD":
                         return wd ?? "";
-
                     default:
                         return null;
                 }
@@ -538,7 +634,7 @@ namespace CmdRunnerPro.ViewModels
         }
         #endregion
 
-        #region Theme
+        #region Theme (minimal + resilient)
         private bool _isDarkTheme;
         public bool IsDarkTheme
         {
@@ -548,14 +644,13 @@ namespace CmdRunnerPro.ViewModels
                 if (_isDarkTheme != value)
                 {
                     _isDarkTheme = value;
-
                     OnPropertyChanged(nameof(IsDarkTheme));
                     ApplyTheme(); // <- critical
                 }
             }
         }
 
-        private string _primaryColor = "Blue";
+        private string _primaryColor = "Blue";   // default MD Blue 500 (#2196F3)
         public string PrimaryColor
         {
             get => _primaryColor;
@@ -569,7 +664,7 @@ namespace CmdRunnerPro.ViewModels
             }
         }
 
-        private string _secondaryColor = "Amber";
+        private string _secondaryColor = "Amber"; // Material Amber 500 (#FFC107)
         public string SecondaryColor
         {
             get => _secondaryColor;
@@ -583,13 +678,11 @@ namespace CmdRunnerPro.ViewModels
             }
         }
 
-        // Lists for your top-bar ComboBoxes
         public ObservableCollection<string> MdixPrimaryColors { get; } = new(new[]
         {
             "Red","Pink","Purple","DeepPurple","Indigo","Blue","LightBlue","Cyan","Teal",
             "Green","LightGreen","Lime","Yellow","Amber","Orange","DeepOrange","Brown","BlueGrey","Grey"
         });
-
         public ObservableCollection<string> MdixSecondaryColors { get; } = new(new[]
         {
             "Red","Pink","Purple","DeepPurple","Indigo","Blue","LightBlue","Cyan","Teal",
@@ -600,24 +693,35 @@ namespace CmdRunnerPro.ViewModels
         {
             try
             {
-                var helper = new MaterialDesignThemes.Wpf.PaletteHelper();
+                var helper = new PaletteHelper();
                 var theme = helper.GetTheme();
 
-                // v5 API: BaseTheme.Dark/Light (no Theme.Dark/Light)
-                theme.SetBaseTheme(
-                    IsDarkTheme
-                        ? MaterialDesignThemes.Wpf.BaseTheme.Dark
-                        : MaterialDesignThemes.Wpf.BaseTheme.Light);
+                theme.SetBaseTheme(IsDarkTheme ? BaseTheme.Dark : BaseTheme.Light);
 
-                // Use your bound strings (also supports hex like #FF2196F3)
-                var primaryName = string.IsNullOrWhiteSpace(PrimaryColor) ? "Blue" : PrimaryColor;
-                var secondaryName = string.IsNullOrWhiteSpace(SecondaryColor) ? "Amber" : SecondaryColor;
+                // Resolve colors from known names or hex; fallback to MD defaults
+                static Color ResolveColor(string name, string fallbackHex)
+                {
+                    try
+                    {
+                        if (!string.IsNullOrWhiteSpace(name))
+                        {
+                            if (name.StartsWith("#"))
+                                return (Color)ColorConverter.ConvertFromString(name);
 
-                var primaryColor = ResolvePrimaryColor(primaryName);
-                var secondaryColor = ResolveSecondaryColor(secondaryName);
+                            // Try WPF named colors
+                            return (Color)ColorConverter.ConvertFromString(name);
+                        }
+                    }
+                    catch { /* fall through */ }
+                    return (Color)ColorConverter.ConvertFromString(fallbackHex);
+                }
 
-                theme.SetPrimaryColor(primaryColor);     // v5: set Color directly
-                theme.SetSecondaryColor(secondaryColor);
+                // MD Blue 500 = #2196F3, MD Amber 500 = #FFC107
+                var primary = ResolveColor(PrimaryColor, "#2196F3");
+                var secondary = ResolveColor(SecondaryColor, "#FFC107");
+
+                theme.SetPrimaryColor(primary);
+                theme.SetSecondaryColor(secondary);
 
                 helper.SetTheme(theme);
             }
@@ -627,40 +731,7 @@ namespace CmdRunnerPro.ViewModels
             }
         }
 
-        private static System.Windows.Media.Color ResolvePrimaryColor(string name)
-        {
-            // Allow hex (#RRGGBB or #AARRGGBB)
-            if (!string.IsNullOrWhiteSpace(name) && name.StartsWith("#") &&
-                System.Windows.Media.ColorConverter.ConvertFromString(name) is System.Windows.Media.Color hex)
-                return hex;
-
-            // Parse enum value from MaterialDesignColors.PrimaryColor
-            if (System.Enum.TryParse<MaterialDesignColors.PrimaryColor>(RemoveSpaces(name), true, out var primaryEnum))
-                return MaterialDesignColors.SwatchHelper.Lookup[
-                    (MaterialDesignColors.MaterialDesignColor)primaryEnum];
-
-            // Fallback
-            return MaterialDesignColors.SwatchHelper.Lookup[
-                (MaterialDesignColors.MaterialDesignColor)MaterialDesignColors.PrimaryColor.Blue];
-        }
-
-        private static System.Windows.Media.Color ResolveSecondaryColor(string name)
-        {
-            if (!string.IsNullOrWhiteSpace(name) && name.StartsWith("#") &&
-                System.Windows.Media.ColorConverter.ConvertFromString(name) is System.Windows.Media.Color hex)
-                return hex;
-
-            if (System.Enum.TryParse<MaterialDesignColors.SecondaryColor>(RemoveSpaces(name), true, out var secondaryEnum))
-                return MaterialDesignColors.SwatchHelper.Lookup[
-                    (MaterialDesignColors.MaterialDesignColor)secondaryEnum];
-
-            return MaterialDesignColors.SwatchHelper.Lookup[
-                (MaterialDesignColors.MaterialDesignColor)MaterialDesignColors.SecondaryColor.Amber];
-        }
-
-        // ========= THEME SETTINGS (minimal file persistence) =========
-
-        // %LOCALAPPDATA%\CmdRunnerPro\theme.cfg
+        // Theme settings persisted in a simple cfg file (local appdata)
         private static readonly string ThemeSettingsPath =
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                          "CmdRunnerPro", "theme.cfg");
@@ -669,9 +740,7 @@ namespace CmdRunnerPro.ViewModels
         {
             try
             {
-                if (!File.Exists(ThemeSettingsPath))
-                    return;
-
+                if (!File.Exists(ThemeSettingsPath)) return;
                 foreach (var raw in File.ReadAllLines(ThemeSettingsPath))
                 {
                     var line = raw.Trim();
@@ -696,12 +765,8 @@ namespace CmdRunnerPro.ViewModels
                             break;
                     }
                 }
-                // Note: setting those properties triggers ApplyTheme() via your setters.
             }
-            catch
-            {
-                // Ignore read/parse errors to avoid blocking startup.
-            }
+            catch { /* ignore */ }
         }
 
         private void SaveThemeSettings()
@@ -714,199 +779,18 @@ namespace CmdRunnerPro.ViewModels
 
                 var lines = new[]
                 {
-            $"IsDarkTheme={IsDarkTheme}",
-            $"PrimaryColor={PrimaryColor}",
-            $"SecondaryColor={SecondaryColor}"
-        };
+                    $"IsDarkTheme={IsDarkTheme}",
+                    $"PrimaryColor={PrimaryColor}",
+                    $"SecondaryColor={SecondaryColor}"
+                };
                 File.WriteAllLines(ThemeSettingsPath, lines);
             }
-            catch
-            {
-                // Ignore write errors; theme change still applies for this session.
-            }
-        }
-
-        private static string RemoveSpaces(string s)
-        {
-            if (string.IsNullOrEmpty(s)) return string.Empty;
-            var sb = new System.Text.StringBuilder(s.Length);
-            for (int i = 0; i < s.Length; i++)
-                if (!char.IsWhiteSpace(s[i])) sb.Append(s[i]);
-            return sb.ToString();
+            catch { /* ignore */ }
         }
         #endregion
 
-        #region Theme / Ports / Seed (data init)
-        private void RefreshPorts()
-        {
-            var ports = SerialPort.GetPortNames()
-                                  .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
-                                  .ToList();
-            ComPortOptions = new ObservableCollection<string>(ports);
-        }
-
-        private void SeedData()
-        {
-            if (Templates.Count > 0) return;
-
-            // Demo items: replace with your persistence
-            Templates.Add(new Template
-            {
-                Name = "Show COM1 & User",
-                TemplateText = "echo COM1={comport1} USER={username}"
-            });
-            Templates.Add(new Template
-            {
-                Name = "Run Program (quoted if needed)",
-                TemplateText = "{Q:program} --help"
-            });
-
-            SelectedTemplate = Templates.FirstOrDefault();
-
-            Presets.Add(new InputPreset
-            {
-                Name = "Example Preset",
-                TemplateName = SelectedTemplate?.Name,
-                Username = "tech1",
-                Opco = "OP01",
-                Program = "cmd.exe"
-            });
-
-            SelectedPreset = Presets.FirstOrDefault();
-        }
-        #endregion
-
-        #region INotifyPropertyChanged
-        public event PropertyChangedEventHandler PropertyChanged;
-
-        protected bool Set<T>(ref T storage, T value, [CallerMemberName] string name = null)
-        {
-            if (Equals(storage, value)) return false;
-            storage = value;
-            OnPropertyChanged(name);
-            return true;
-        }
-
-        protected void OnPropertyChanged([CallerMemberName] string name = null)
-            => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
-        #endregion
-
-        #region Template CRUD Helpers
-        private async void NewTemplate()
-        {
-            var scratch = new Template { Name = "", TemplateText = "" };
-
-            var existingNames = new HashSet<string>(Templates.Select(t => t.Name), StringComparer.OrdinalIgnoreCase);
-
-            var editor = new TemplateEditor();
-            var vm = new TemplateEditorViewModel(
-                originalTemplate: scratch,
-                name: scratch.Name,
-                template: scratch.TemplateText,
-                comPortOptions: ComPortOptions,
-                nameExists: n => existingNames.Contains(n?.Trim() ?? "")
-            );
-            editor.DataContext = vm;
-
-            var result = await DialogHost.Show(editor, "RootDialog");
-            if (result is TemplateEditorViewModel saved)
-            {
-                saved.ApplyTo(scratch);
-                Templates.Add(scratch);
-                SelectedTemplate = scratch;
-                UpdateTemplatePreview();
-            }
-        }
-
-        private async void CloneTemplate()
-        {
-            if (SelectedTemplate is null) return;
-
-            string baseName = SelectedTemplate.Name;
-            string proposal = baseName + " (copy)";
-            var existingNames = new HashSet<string>(Templates.Select(t => t.Name), StringComparer.OrdinalIgnoreCase);
-            int i = 2;
-            while (existingNames.Contains(proposal))
-                proposal = $"{baseName} (copy {i++})";
-
-            var clone = new Template
-            {
-                Name = proposal,
-                TemplateText = SelectedTemplate.TemplateText
-            };
-
-            var editor = new TemplateEditor();
-            var vm = new TemplateEditorViewModel(
-                originalTemplate: clone,
-                name: clone.Name,
-                template: clone.TemplateText,
-                comPortOptions: ComPortOptions,
-                nameExists: n => existingNames.Contains(n?.Trim() ?? "")
-            );
-            editor.DataContext = vm;
-
-            var result = await DialogHost.Show(editor, "RootDialog");
-            if (result is TemplateEditorViewModel saved)
-            {
-                saved.ApplyTo(clone);
-                Templates.Add(clone);
-                SelectedTemplate = clone;
-                UpdateTemplatePreview();
-            }
-        }
-
-        private void DeleteTemplate()
-        {
-            if (SelectedTemplate is null) return;
-
-            var answer = System.Windows.MessageBox.Show(
-                $"Delete template \"{SelectedTemplate.Name}\"?",
-                "Confirm Delete",
-                System.Windows.MessageBoxButton.YesNo,
-                System.Windows.MessageBoxImage.Warning);
-
-            if (answer != System.Windows.MessageBoxResult.Yes) return;
-
-            var oldName = SelectedTemplate.Name;
-            Templates.Remove(SelectedTemplate);
-
-            RemoveTemplateFromReferences(oldName);
-
-            SelectedTemplate = Templates.FirstOrDefault();
-            UpdateTemplatePreview();
-        }
-        #endregion
-
-        #region Template reference maintenance
-        private void RenameTemplateInReferences(string oldName, string newName)
-        {
-            if (string.IsNullOrWhiteSpace(oldName) || string.IsNullOrWhiteSpace(newName))
-                return;
-
-            foreach (var preset in Presets ?? Enumerable.Empty<InputPreset>())
-            {
-                if (string.Equals(preset.TemplateName, oldName, StringComparison.OrdinalIgnoreCase))
-                    preset.TemplateName = newName;
-            }
-            OnPropertyChanged(nameof(Presets));
-        }
-
-        private void RemoveTemplateFromReferences(string oldName)
-        {
-            if (string.IsNullOrWhiteSpace(oldName)) return;
-
-            foreach (var preset in Presets ?? Enumerable.Empty<InputPreset>())
-            {
-                if (string.Equals(preset.TemplateName, oldName, StringComparison.OrdinalIgnoreCase))
-                    preset.TemplateName = null;
-            }
-            OnPropertyChanged(nameof(Presets));
-        }
-        #endregion
-
-        #region App Settings (timestamps)
+        #region Settings ViewModel (timestamps toggle)
         public SettingsViewModel Settings { get; } = new SettingsViewModel();
-
         public class SettingsViewModel : INotifyPropertyChanged
         {
             private bool _showTimestamps = true;
@@ -915,18 +799,63 @@ namespace CmdRunnerPro.ViewModels
                 get => _showTimestamps;
                 set { if (_showTimestamps != value) { _showTimestamps = value; OnPropertyChanged(); } }
             }
-
             public event PropertyChangedEventHandler PropertyChanged;
             private void OnPropertyChanged([CallerMemberName] string name = null)
                 => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
         }
         #endregion
 
-        // Preset persistence
+        #region Theme / Ports init
+        private void RefreshPorts()
+        {
+            var ports = SerialPort.GetPortNames()
+                                  .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
+                                  .ToList();
+            ComPortOptions = new ObservableCollection<string>(ports);
+        }
+        #endregion
+
+        #region INotifyPropertyChanged
+        public event PropertyChangedEventHandler PropertyChanged;
+        protected bool Set<T>(ref T storage, T value, [CallerMemberName] string name = null)
+        {
+            if (Equals(storage, value)) return false;
+            storage = value;
+            OnPropertyChanged(name);
+            return true;
+        }
+        protected void OnPropertyChanged([CallerMemberName] string name = null)
+            => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        #endregion
+
+        #region Template reference maintenance (Presets linkage)
+        private void RenameTemplateInReferences(string oldName, string newName)
+        {
+            if (string.IsNullOrWhiteSpace(oldName) || string.IsNullOrWhiteSpace(newName)) return;
+
+            foreach (var preset in Presets ?? Enumerable.Empty<InputPreset>())
+                if (string.Equals(preset.TemplateName, oldName, StringComparison.OrdinalIgnoreCase))
+                    preset.TemplateName = newName;
+
+            OnPropertyChanged(nameof(Presets));
+        }
+
+        private void RemoveTemplateFromReferences(string oldName)
+        {
+            if (string.IsNullOrWhiteSpace(oldName)) return;
+
+            foreach (var preset in Presets ?? Enumerable.Empty<InputPreset>())
+                if (string.Equals(preset.TemplateName, oldName, StringComparison.OrdinalIgnoreCase))
+                    preset.TemplateName = null;
+
+            OnPropertyChanged(nameof(Presets));
+        }
+        #endregion
+
+        #region Preset persistence (unchanged)
         private static readonly string PresetsPath =
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                          "CmdRunnerPro", "presets.json");
-
         private static readonly string LastUsedPath =
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                          "CmdRunnerPro", "lastused.json");
@@ -942,7 +871,6 @@ namespace CmdRunnerPro.ViewModels
             public string Program { get; set; }
             public string WorkingDirectory { get; set; }
         }
-
         private sealed class LastUsedState
         {
             public string PresetName { get; set; }
@@ -965,14 +893,10 @@ namespace CmdRunnerPro.ViewModels
 
                 var list = JsonSerializer.Deserialize<List<InputPreset>>(File.ReadAllText(PresetsPath))
                            ?? new List<InputPreset>();
-
                 Presets = new ObservableCollection<InputPreset>(list);
                 OnPropertyChanged(nameof(Presets));
             }
-            catch
-            {
-                // ignore
-            }
+            catch { /* ignore */ }
         }
 
         private void SavePresetsToDisk()
@@ -983,21 +907,16 @@ namespace CmdRunnerPro.ViewModels
                 File.WriteAllText(PresetsPath,
                     JsonSerializer.Serialize(Presets, new JsonSerializerOptions { WriteIndented = true }));
             }
-            catch
-            {
-                // ignore
-            }
+            catch { /* ignore */ }
         }
+
         private void DeletePreset()
         {
             if (SelectedPreset is null) return;
 
             var removedName = SelectedPreset.Name;
             Presets.Remove(SelectedPreset);
-
-            // choose next available preset (if any)
             SelectedPreset = Presets.FirstOrDefault();
-
             SavePresetsToDisk();
             SaveLastUsed();
             RaiseCommandCanExecuteChanged();
@@ -1051,11 +970,10 @@ namespace CmdRunnerPro.ViewModels
                 var state = JsonSerializer.Deserialize<LastUsedState>(File.ReadAllText(LastUsedPath));
                 if (state == null) return;
 
-                // If a preset name was saved and exists now, use it; otherwise use the tokens snapshot.
                 if (!string.IsNullOrWhiteSpace(state.PresetName))
                 {
-                    var match = Presets?.FirstOrDefault(p => string.Equals(p.Name, state.PresetName,
-                                         StringComparison.OrdinalIgnoreCase));
+                    var match = Presets?.FirstOrDefault(p =>
+                        string.Equals(p.Name, state.PresetName, StringComparison.OrdinalIgnoreCase));
                     if (match != null)
                     {
                         SelectedPreset = match;
@@ -1064,11 +982,12 @@ namespace CmdRunnerPro.ViewModels
                     }
                 }
 
-                // Fallback to raw tokens (ad-hoc last session)
+                // Fallback to raw tokens
                 ApplyTokens(state.Tokens);
             }
             catch { /* ignore */ }
         }
+
         private void SavePreset()
         {
             // Update currently selected preset if any; otherwise create a new one with a generated name
@@ -1091,12 +1010,10 @@ namespace CmdRunnerPro.ViewModels
 
         private void SavePresetAs()
         {
-            // Save a copy regardless of SelectedPreset (create new)
             var pnew = new InputPreset { Name = GenerateUniquePresetName() };
             FillPresetFromCurrent(pnew);
             Presets.Add(pnew);
             SelectedPreset = pnew;
-
             SavePresetsToDisk();
             SaveLastUsed();
             RaiseCommandCanExecuteChanged();
@@ -1124,79 +1041,55 @@ namespace CmdRunnerPro.ViewModels
                 name = $"{baseName} {++i}";
             return name;
         }
-        public string SelectedCom1
-        {
-            get => _selectedCom1;
-            set { if (Set(ref _selectedCom1, value)) { UpdateTemplatePreview(); SaveLastUsed(); } }
-        }
+        #endregion
 
-        public string SelectedCom2
-        {
-            get => _selectedCom2;
-            set { if (Set(ref _selectedCom2, value)) { UpdateTemplatePreview(); SaveLastUsed(); } }
-        }
-
-        public string Username
-        {
-            get => _username;
-            set { if (Set(ref _username, value)) { UpdateTemplatePreview(); SaveLastUsed(); } }
-        }
-
-        public string Password
-        {
-            get => _password;
-            set { if (Set(ref _password, value)) { UpdateTemplatePreview(); SaveLastUsed(); } }
-        }
-
-        public string Opco
-        {
-            get => _opco;
-            set { if (Set(ref _opco, value)) { UpdateTemplatePreview(); SaveLastUsed(); } }
-        }
-
-        public string Program
-        {
-            get => _program;
-            set { if (Set(ref _program, value)) { UpdateTemplatePreview(); SaveLastUsed(); } }
-        }
-
-        public string WorkingDirectory
-        {
-            get => _workingDirectory;
-            set { if (Set(ref _workingDirectory, value)) { UpdateTemplatePreview(); SaveLastUsed(); } }
-        }
-
+        #region Template storage (JSON per file, name-based, rename-aware)
         private static readonly JsonSerializerOptions _json = new() { WriteIndented = true };
 
-        // Choose where to store the template files:
+        // %AppData%\CmdRunnerPro_v2\Templates
         private static string TemplatesFolder =>
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                          "CmdRunnerPro_v2", "Templates");
 
-        private static string PathFor(Template t) => Path.Combine(TemplatesFolder, $"{t.Id}.json");
+        private static string PathForName(string name) =>
+            Path.Combine(TemplatesFolder, $"{ToSafeFileName(name)}.json");
 
-        private async Task SaveTemplateAsync(Template t)
+        private static string ToSafeFileName(string name)
         {
+            var invalid = Path.GetInvalidFileNameChars();
+            var cleaned = new string((name ?? "Template")
+                .Select(ch => invalid.Contains(ch) ? '_' : ch).ToArray());
+            var normalized = string.Join(" ", cleaned.Split(new[] { ' ' },
+                StringSplitOptions.RemoveEmptyEntries));
+            return string.IsNullOrWhiteSpace(normalized) ? "Template" : normalized;
+        }
+
+        /// <summary>Save or rename a template. Pass originalName when Name changed.</summary>
+        private async Task SaveTemplateAsync(Template t, string? originalName = null)
+        {
+            if (t is null) return;
             Directory.CreateDirectory(TemplatesFolder);
-            var path = PathFor(t);
+
+            if (!string.IsNullOrWhiteSpace(originalName) &&
+                !originalName.Equals(t.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                var oldPath = PathForName(originalName);
+                if (File.Exists(oldPath)) File.Delete(oldPath);
+            }
+
+            var path = PathForName(t.Name);
             using var fs = File.Create(path);
             await JsonSerializer.SerializeAsync(fs, t, _json);
         }
 
-        private Task DeleteTemplateAsync(Template t)
+        private Task DeleteTemplateByNameAsync(string name)
         {
-            var path = PathFor(t);
+            var path = PathForName(name);
             if (File.Exists(path)) File.Delete(path);
             return Task.CompletedTask;
         }
 
-        private Task<bool> ConfirmAsync(string message)
-        {
-            var result = MessageBox.Show(message, "Confirm", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-            return Task.FromResult(result == MessageBoxResult.Yes);
-        }
-
-        // Optional: call at startup to load/refresh the list
+        /// <summary>Load all templates from disk into the ComboBox (sorted by Name).</summary>
         private async Task LoadTemplatesAsync()
         {
             Directory.CreateDirectory(TemplatesFolder);
@@ -1208,16 +1101,44 @@ namespace CmdRunnerPro.ViewModels
                 {
                     await using var fs = File.OpenRead(file);
                     var model = await JsonSerializer.DeserializeAsync<Template>(fs);
-                    if (model is not null)
-                        items.Add(model);
+                    if (model is not null) items.Add(model);
                 }
                 catch { /* ignore bad files */ }
             }
 
-            // Sort by Name (optional)
-            Templates = new ObservableCollection<Template>(items.OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase));
+            Templates = new ObservableCollection<Template>(
+                items.OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase));
+
             SelectedTemplate = Templates.FirstOrDefault();
         }
 
+        /// <summary>Ensure a unique name against the current in-memory list.</summary>
+        private string UniqueName(string baseName)
+        {
+            if (!Templates.Any(t => t.Name.Equals(baseName, StringComparison.OrdinalIgnoreCase)))
+                return baseName;
+
+            int n = 1;
+            while (true)
+            {
+                var candidate = n == 1 ? $"{baseName} (Copy)" : $"{baseName} (Copy {n})";
+                if (!Templates.Any(t => t.Name.Equals(candidate, StringComparison.OrdinalIgnoreCase)))
+                    return candidate;
+                n++;
+            }
+        }
+
+        private Task<bool> ConfirmAsync(string message)
+        {
+            var result = MessageBox.Show(message, "Confirm", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            return Task.FromResult(result == MessageBoxResult.Yes);
+        }
+
+        private void Reselect(string name)
+        {
+            SelectedTemplate = Templates.FirstOrDefault(t =>
+                t.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+        }
+        #endregion
     }
 }

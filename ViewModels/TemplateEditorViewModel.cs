@@ -12,6 +12,7 @@ using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Input;
+using System.IO; // for Path.GetInvalidFileNameChars
 
 namespace CmdRunnerPro.ViewModels
 {
@@ -72,6 +73,12 @@ namespace CmdRunnerPro.ViewModels
             SaveCommand = new RelayCommand<object>(_ => Save(), _ => CanSave);
             SaveAsCommand = new RelayCommand<object>(_ => SaveAs(), _ => CanSave);
             DeleteCommand = new RelayCommand<object>(_ => Delete(), _ => true);
+            BeginRenameCommand = new RelayCommand<object>(_ => BeginRename(), _ => true);
+            ConfirmRenameCommand = new RelayCommand<object>(_ => ConfirmRename(), _ => CanConfirmRename);
+            CancelRenameCommand = new RelayCommand<object>(_ => CancelRename(), _ => true);
+            ClearSequenceCommand = new RelayCommand<object>(_ => ClearSequence(), _ => true);
+
+
 
             // Preload snippets/categories + initial validation/preview
             BuildDefaultSnippets();
@@ -355,6 +362,7 @@ namespace CmdRunnerPro.ViewModels
         public ICommand AddSnippetCommand { get; }
         public ICommand AddTokenCommand { get; }
 
+
         private void AddSnippet(Snippet s)
         {
             if (s is null || string.IsNullOrWhiteSpace(s.Text)) return;
@@ -447,6 +455,11 @@ namespace CmdRunnerPro.ViewModels
         public ICommand SaveCommand { get; }
         public ICommand SaveAsCommand { get; }
         public ICommand DeleteCommand { get; }
+        public ICommand BeginRenameCommand { get; }
+        public ICommand ConfirmRenameCommand { get; }
+        public ICommand CancelRenameCommand { get; }
+        public ICommand ClearSequenceCommand { get; }
+
 
         private static readonly StringComparer _nameComparer = StringComparer.OrdinalIgnoreCase;
 
@@ -489,26 +502,28 @@ namespace CmdRunnerPro.ViewModels
         {
             if (!CanSave) return;
 
-            string baseName = string.IsNullOrWhiteSpace(Name) ? "New Template" : Name.Trim();
-            string newName = baseName;
+            // What the user currently typed in the editor’s Name field
+            var entered = SanitizeFileishName(Name);
+            var original = GetOriginalName() ?? string.Empty;
 
-            if (_nameExists(newName) && !_nameComparer.Equals(newName, GetOriginalName() ?? ""))
+            string targetName;
+
+            if (_nameComparer.Equals(entered, original))
             {
-                // Auto-uniquify: "Name (Copy)", "Name (Copy 2)", ...
-                int n = 1;
-                do
-                {
-                    newName = n == 1 ? $"{baseName} (Copy)" : $"{baseName} (Copy {n})";
-                    n++;
-                } while (_nameExists(newName));
+                // User didn’t change the name; treat Save As as a copy operation
+                targetName = MakeUniqueName(entered);
+            }
+            else
+            {
+                // User changed the name; respect it (auto-unique only if collides)
+                targetName = _nameExists(entered) ? MakeUniqueName(entered) : entered;
             }
 
-            CloseDialog(new TemplateEditorResult
+            DialogHost.Close("RootDialog", new TemplateEditorResult
             {
                 Action = TemplateEditorResult.EditorAction.SavedAs,
-                Name = newName,
-                TemplateText = Template ?? "",
-                OriginalId = GetOriginalId()
+                Name = targetName,
+                TemplateText = Template ?? string.Empty
             });
         }
 
@@ -523,6 +538,121 @@ namespace CmdRunnerPro.ViewModels
                 OriginalId = GetOriginalId()
             });
         }
+        private static readonly char[] _invalidNameChars = Path.GetInvalidFileNameChars();
+
+        private static string SanitizeFileishName(string input)
+        {
+            if (string.IsNullOrWhiteSpace(input)) return "New Template";
+            var trimmed = input.Trim();
+            return new string(trimmed.Select(c => _invalidNameChars.Contains(c) ? '_' : c).ToArray());
+        }
+
+        private string MakeUniqueName(string baseName)
+        {
+            if (!_nameExists(baseName)) return baseName;
+            int n = 1;
+            string candidate;
+            do
+            {
+                candidate = n == 1 ? $"{baseName} (Copy)" : $"{baseName} (Copy {++n})";
+            } while (_nameExists(candidate));
+            return candidate;
+        }
+
+        private bool ValidateNewName(string? name, bool allowSameAsCurrent, out string error)
+        {
+            error = string.Empty;
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                error = "Name cannot be empty.";
+                return false;
+            }
+            var trimmed = name.Trim();
+            if (trimmed.IndexOfAny(_invalidNameChars) >= 0)
+            {
+                error = "Name contains invalid characters.";
+                return false;
+            }
+            if (!allowSameAsCurrent && string.Equals(trimmed, GetOriginalName() ?? "", StringComparison.OrdinalIgnoreCase))
+            {
+                error = "That’s the current name.";
+                return false;
+            }
+            // allow picking the same as current for rename? flip the flag if you want that allowed
+            return true;
+        }
+        private string _proposedName = "";
+        public string ProposedName
+        {
+            get => _proposedName;
+            set
+            {
+                if (Set(ref _proposedName, value))
+                    OnPropertyChanged(nameof(CanConfirmRename));
+            }
+        }
+
+        public bool CanConfirmRename
+            => ValidateNewName(ProposedName, allowSameAsCurrent: false, out _);
         #endregion
+        // If you drive a small inline dialog from XAML, you can toggle a bool here.
+        // Keeping VM-agnostic, we just preload ProposedName and let the view show a dialog.
+        private void BeginRename()
+        {
+            ProposedName = Name ?? "";
+            IsRenameDialogOpen = true;
+        }
+
+
+        private void ConfirmRename()
+        {
+            if (!ValidateNewName(ProposedName, allowSameAsCurrent: false, out _)) return;
+            Name = SanitizeFileishName(ProposedName);
+            IsRenameDialogOpen = false;
+        }
+
+
+        private void CancelRename()
+        {
+            IsRenameDialogOpen = false;
+            // No-op; the view can just close the dialog.
+        }
+
+        private bool _isRenameDialogOpen;
+        public bool IsRenameDialogOpen
+        {
+            get => _isRenameDialogOpen;
+            set => Set(ref _isRenameDialogOpen, value);
+        }
+        // --- LOAD FROM SELECTED TEMPLATE ---
+        public void LoadFrom(object source)
+        {
+            if (source is null) return;
+
+            var t = source.GetType();
+
+            // Read Name
+            var name = t.GetProperty("Name")?.GetValue(source) as string ?? string.Empty;
+
+            // Read Template text (support both "TemplateText" and "Template" property names)
+            var text = t.GetProperty("TemplateText")?.GetValue(source) as string
+                       ?? t.GetProperty("Template")?.GetValue(source) as string
+                       ?? string.Empty;
+
+            // Assign to working copy (these setters already run validation and preview)
+            Name = name;
+            Template = text;
+        }
+
+        // --- CLEAR SEQUENCE (ensures the TextBox updates) ---
+        private void ClearSequence()
+        {
+            if (!string.IsNullOrEmpty(Template))
+                Template = string.Empty;   // setter raises PropertyChanged & revalidates
+            UpdatePreview();
+            ValidateProperty(nameof(Template), Template);
+            OnPropertyChanged(nameof(CanSave));
+        }
+
     }
 }
