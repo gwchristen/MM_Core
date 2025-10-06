@@ -1,5 +1,10 @@
 // ViewModels/MainViewModel.cs
+using CmdRunnerPro.Models;             // Template, InputPreset
+using CmdRunnerPro.Views;              // TemplateEditor (UserControl)
+using MaterialDesignColors;            // SwatchHelper
+using MaterialDesignThemes.Wpf;        // PaletteHelper, DialogHost
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -7,53 +12,81 @@ using System.IO;
 using System.IO.Ports;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Documents;
 using System.Windows.Input;
-using CmdRunnerPro.Models;           // Assumes Template, InputPreset live here
-using CmdRunnerPro.Views;            // TemplateEditor (UserControl)
-using MaterialDesignThemes.Wpf;      // DialogHost.Show(...)
-using CmdRunnerPro.ViewModels;       // TemplateEditorViewModel
+using System.Windows.Media;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement.TrayNotify;
+using MC = MaterialDesignColors;
+using MD = MaterialDesignThemes.Wpf;
 using WinForms = System.Windows.Forms;
+using System.Windows;
+
 
 namespace CmdRunnerPro.ViewModels
 {
     public class MainViewModel : INotifyPropertyChanged
     {
         #region Fields
-
         private Process _currentProcess;
         private CancellationTokenSource _runCts;
 
+        // Settings persistence (theme + timestamps)
+        private readonly string _configDir;
+        private readonly string _themeSettingsPath;
         #endregion
 
         #region Ctor
-
         public MainViewModel()
         {
-            // Commands (match your snippet; lambdas avoid method-group overload ambiguity)
+            // Resolve settings paths
+            _configDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CmdRunnerPro");
+            _themeSettingsPath = Path.Combine(_configDir, "theme.json");
+
+            // Commands
             LoadPresetCommand = new RelayCommand<InputPreset?>(p => LoadPreset(p ?? SelectedPreset), _ => SelectedPreset != null);
             RunCommand = new RelayCommand(async () => await RunSelectedAsync(), () => SelectedTemplate != null);
             StopCommand = new RelayCommand(Stop, () => _currentProcess != null && !_currentProcess.HasExited);
             BrowseWorkingDirectoryCommand = new RelayCommand(BrowseWorkingDirectory);
+
             NewTemplateCommand = new RelayCommand(NewTemplate);
             CloneTemplateCommand = new RelayCommand(CloneTemplate, () => SelectedTemplate != null);
             DeleteTemplateCommand = new RelayCommand(DeleteTemplate, () => SelectedTemplate != null);
 
-            // Template Editor command (uses parameterless wrapper that awaits the async core)
             OpenTemplateEditorCommand = new RelayCommand(OpenTemplateEditor, () => SelectedTemplate != null);
 
-            ApplyTheme();        // optional hook; safe no-op here
-            RefreshPorts();      // populate COM ports
-            SeedData();          // demo data; replace with persisted load if desired
-        }
+            SavePresetCommand = new RelayCommand(SavePreset, () => true);
+            SavePresetAsCommand = new RelayCommand(SavePresetAs, () => true);
+            DeletePresetCommand = new RelayCommand(DeletePreset, () => SelectedPreset != null);
 
+            // Initialize data
+            RefreshPorts();
+            SeedData();
+
+
+            LoadPresetsFromDisk();
+            LoadLastUsed();
+
+            // Load persisted theme + ShowTimestamps (or defaults), then apply theme
+            LoadThemeSettings();   // sets backing fields + Settings.ShowTimestamps
+            ApplyTheme();
+
+            // Save theme when ShowTimestamps changes (keep in same file)
+            Settings.PropertyChanged += (s, e) =>
+            {
+                if (e.PropertyName == nameof(SettingsViewModel.ShowTimestamps))
+                    SaveThemeSettings();
+            };
+
+            // Make preview reflect current defaults
+            UpdateTemplatePreview();
+        }
         #endregion
 
         #region Collections & Selection
-
         private ObservableCollection<Template> _templates = new();
         public ObservableCollection<Template> Templates
         {
@@ -69,8 +102,8 @@ namespace CmdRunnerPro.ViewModels
             {
                 if (Set(ref _selectedTemplate, value))
                 {
-                    // When template changes, command can-execute may change
                     RaiseCommandCanExecuteChanged();
+                    UpdateTemplatePreview();   // recompute preview
                 }
             }
         }
@@ -90,65 +123,20 @@ namespace CmdRunnerPro.ViewModels
             {
                 if (Set(ref _selectedPreset, value))
                 {
-                    // Preset selection affects LoadPresetCommand
                     RaiseCommandCanExecuteChanged();
                 }
             }
         }
-
         #endregion
 
         #region Inputs / Working Directory
-
-        // Six inputs referenced in your README (used when expanding tokens at run-time)
         private string _selectedCom1;
-        public string SelectedCom1
-        {
-            get => _selectedCom1;
-            set => Set(ref _selectedCom1, value);
-        }
-
         private string _selectedCom2;
-        public string SelectedCom2
-        {
-            get => _selectedCom2;
-            set => Set(ref _selectedCom2, value);
-        }
-
         private string _username;
-        public string Username
-        {
-            get => _username;
-            set => Set(ref _username, value);
-        }
-
         private string _password;
-        public string Password
-        {
-            get => _password;
-            set => Set(ref _password, value);
-        }
-
         private string _opco;
-        public string Opco
-        {
-            get => _opco;
-            set => Set(ref _opco, value);
-        }
-
         private string _program;
-        public string Program
-        {
-            get => _program;
-            set => Set(ref _program, value);
-        }
-
         private string _workingDirectory;
-        public string WorkingDirectory
-        {
-            get => _workingDirectory;
-            set => Set(ref _workingDirectory, value);
-        }
 
         private ObservableCollection<string> _comPortOptions = new();
         public ObservableCollection<string> ComPortOptions
@@ -156,12 +144,28 @@ namespace CmdRunnerPro.ViewModels
             get => _comPortOptions;
             set => Set(ref _comPortOptions, value);
         }
-
         #endregion
 
-        #region Output
+        #region Preview + Output
+        private string _templateContent = string.Empty;
+        /// <summary>
+        /// Expanded template with current token inputs; bound to the right-side "Command Preview" TextBox.
+        /// </summary>
+        public string TemplateContent
+        {
+            get => _templateContent;
+            private set => Set(ref _templateContent, value);
+        }
+
+        /// <summary>
+        /// Live output lines for the right-side ListBox.
+        /// </summary>
+        public ObservableCollection<string> OutputLines { get; } = new();
 
         private string _outputLog;
+        /// <summary>
+        /// Legacy whole-log string; kept for compatibility if other parts of the app rely on it.
+        /// </summary>
         public string OutputLog
         {
             get => _outputLog;
@@ -171,13 +175,20 @@ namespace CmdRunnerPro.ViewModels
         private void AppendOutput(string text)
         {
             if (string.IsNullOrEmpty(text)) return;
-            OutputLog = string.IsNullOrEmpty(OutputLog) ? text : $"{OutputLog}{Environment.NewLine}{text}";
-        }
 
+            string line = Settings?.ShowTimestamps == true
+                ? $"[{DateTime.Now:HH:mm:ss}] {text}"
+                : text;
+
+            OutputLines.Add(line);
+
+            OutputLog = string.IsNullOrEmpty(OutputLog)
+                ? line
+                : $"{OutputLog}{Environment.NewLine}{line}";
+        }
         #endregion
 
         #region Commands
-
         public ICommand LoadPresetCommand { get; }
         public ICommand RunCommand { get; }
         public ICommand StopCommand { get; }
@@ -186,7 +197,9 @@ namespace CmdRunnerPro.ViewModels
         public ICommand NewTemplateCommand { get; }
         public ICommand CloneTemplateCommand { get; }
         public ICommand DeleteTemplateCommand { get; }
-
+        public ICommand SavePresetCommand { get; }
+        public ICommand SavePresetAsCommand { get; }
+        public ICommand DeletePresetCommand { get; }
 
         private void RaiseCommandCanExecuteChanged()
         {
@@ -198,38 +211,40 @@ namespace CmdRunnerPro.ViewModels
             (CloneTemplateCommand as RelayCommand)?.RaiseCanExecuteChanged();
             (DeleteTemplateCommand as RelayCommand)?.RaiseCanExecuteChanged();
         }
-
         #endregion
 
         #region Presets
-
         private void LoadPreset(InputPreset preset)
         {
             if (preset == null) return;
 
-            // TODO: tie your preset fields into the six inputs and/or selected template name.
-            // This is a harmless example that tries to select a matching template by name.
+            // template preference
             if (!string.IsNullOrWhiteSpace(preset.TemplateName))
             {
-                var match = Templates.FirstOrDefault(t => string.Equals(t.Name, preset.TemplateName, StringComparison.OrdinalIgnoreCase));
-                if (match != null)
-                    SelectedTemplate = match;
+                var match = Templates.FirstOrDefault(t =>
+                    string.Equals(t.Name, preset.TemplateName, StringComparison.OrdinalIgnoreCase));
+                if (match != null) SelectedTemplate = match;
             }
 
-            // Example: apply input defaults from preset (if your model has them)
-            Username = string.IsNullOrEmpty(preset.Username) ? Username : preset.Username;
-            Opco = string.IsNullOrEmpty(preset.Opco) ? Opco : preset.Opco;
-            Program = string.IsNullOrEmpty(preset.Program) ? Program : preset.Program;
-            // Password: you might decrypt from DPAPI if preset stores an encrypted form.
-        }
+            // tokens
+            SelectedCom1 = preset.Com1;
+            SelectedCom2 = preset.Com2;
+            Username = preset.Username;
+            Password = preset.Password;
+            Opco = preset.Opco;
+            Program = preset.Program;
+            WorkingDirectory = preset.WorkingDirectory;
 
+            UpdateTemplatePreview();
+            SaveLastUsed(); // remember what we just loaded
+        }
         #endregion
 
         #region Run / Stop
-
         private async Task RunSelectedAsync()
         {
             if (SelectedTemplate == null) return;
+
             _runCts?.Cancel();
             _runCts = new CancellationTokenSource();
 
@@ -237,10 +252,8 @@ namespace CmdRunnerPro.ViewModels
             {
                 AppendOutput($"--- Running template: {SelectedTemplate.Name} ---");
 
-                // Expand tokens per README (supports {Q:token} to auto-quote on spaces)  [2](https://stackoverflow.com/questions/18126559/how-can-i-download-a-single-raw-file-from-a-private-github-repo-using-the-comman)
                 var command = ExpandTokens(SelectedTemplate.TemplateText, buildRuntimeTokenMap());
 
-                // Default to WorkingDirectory if provided; otherwise current process dir
                 var wd = string.IsNullOrWhiteSpace(WorkingDirectory)
                     ? Environment.CurrentDirectory
                     : WorkingDirectory;
@@ -257,11 +270,17 @@ namespace CmdRunnerPro.ViewModels
                 };
 
                 _currentProcess = new Process { StartInfo = psi, EnableRaisingEvents = true };
-                _currentProcess.OutputDataReceived += (_, e) => { if (e.Data != null) AppendOutput(e.Data); };
+
+                _currentProcess.OutputDataReceived += (_, e) =>
+                {
+                    if (e.Data != null) AppendOutput(e.Data);
+                };
+
                 _currentProcess.ErrorDataReceived += (_, e) =>
                 {
                     if (e.Data != null) AppendOutput("[ERR] " + e.Data);
                 };
+
                 _currentProcess.Exited += (_, __) =>
                 {
                     AppendOutput($"--- Process exited (Code: {_currentProcess.ExitCode}) ---");
@@ -290,8 +309,10 @@ namespace CmdRunnerPro.ViewModels
             {
                 _runCts?.Dispose();
                 _runCts = null;
+
                 _currentProcess?.Dispose();
                 _currentProcess = null;
+
                 RaiseCommandCanExecuteChanged();
             }
         }
@@ -312,11 +333,9 @@ namespace CmdRunnerPro.ViewModels
                 AppendOutput("[STOP ERROR] " + ex.Message);
             }
         }
-
         #endregion
 
         #region Working Directory (WinForms chooser)
-
         private void BrowseWorkingDirectory()
         {
             using var dlg = new WinForms.FolderBrowserDialog
@@ -331,25 +350,17 @@ namespace CmdRunnerPro.ViewModels
             if (dlg.ShowDialog() == WinForms.DialogResult.OK)
                 WorkingDirectory = dlg.SelectedPath;
         }
-
         #endregion
 
         #region Template Editor (DialogHost, Identifier="RootDialog")
+        private async void OpenTemplateEditor() => await OpenTemplateEditorAsync(SelectedTemplate);
 
-        // Parameterless wrapper suitable for a non-generic RelayCommand
-        private async void OpenTemplateEditor()
-        {
-            await OpenTemplateEditorAsync(SelectedTemplate);
-        }
-
-        // Async core that opens the editor and applies on Save
         private async Task OpenTemplateEditorAsync(Template template)
         {
             if (template is null) return;
 
             var oldName = template.Name;
 
-            // Build unique checker excluding this template
             var existingNames = new HashSet<string>(
                 Templates.Where(t => !ReferenceEquals(t, template))
                          .Select(t => t.Name),
@@ -365,26 +376,92 @@ namespace CmdRunnerPro.ViewModels
             );
             editor.DataContext = vm;
 
-            var result = await MaterialDesignThemes.Wpf.DialogHost.Show(editor, "RootDialog");
+            var result = await DialogHost.Show(editor, "RootDialog");
             if (result is TemplateEditorViewModel saved)
             {
-                saved.ApplyTo(template);              // writes Name + TemplateText
+                saved.ApplyTo(template);
                 OnPropertyChanged(nameof(Templates));
                 OnPropertyChanged(nameof(SelectedTemplate));
 
-                // If the name changed, fix references
                 if (!string.Equals(oldName, template.Name, StringComparison.OrdinalIgnoreCase))
                 {
                     RenameTemplateInReferences(oldName, template.Name);
                 }
+
+                UpdateTemplatePreview();
+            }
+        }
+        #endregion
+
+        // Example: adjust type/props to your real Template model
+        public class Template
+        {
+            public Guid Id { get; set; }
+            public string Name { get; set; }
+            public string TemplateText { get; set; }
+        }
+
+        // Where you open the editor dialog:
+        public async Task EditSelectedTemplateAsync()
+        {
+            if (SelectedTemplate is null) return;
+
+            var vm = new TemplateEditorViewModel(
+                originalTemplate: SelectedTemplate,
+                name: SelectedTemplate.Name,
+                template: SelectedTemplate.TemplateText,
+                //comPortOptions: AvailableComPorts,
+                nameExists: name => Templates.Any(t =>
+                    !ReferenceEquals(t, SelectedTemplate) &&
+                    string.Equals(t.Name, name, StringComparison.OrdinalIgnoreCase))
+            );
+
+            var view = new TemplateEditor { DataContext = vm };
+            var result = await MaterialDesignThemes.Wpf.DialogHost.Show(view, "RootDialog");
+
+            if (result is TemplateEditorResult r)
+            {
+                switch (r.Action)
+                {
+                    case TemplateEditorResult.EditorAction.Saved:
+                        // Save back the edited original
+                        await SaveTemplateAsync(SelectedTemplate);
+                        break;
+
+                    case TemplateEditorResult.EditorAction.SavedAs:
+                        {
+                            // Create a *new* template with new Id + the provided name + text
+                            var copy = new Template
+                            {
+                                Id = Guid.NewGuid(),
+                                Name = r.Name?.Trim() ?? "New Template",
+                                TemplateText = r.TemplateText ?? string.Empty
+                            };
+
+                            Templates.Add(copy);
+                            await SaveTemplateAsync(copy);
+                            SelectedTemplate = copy;      // select the new one
+                            break;
+                        }
+
+                    case TemplateEditorResult.EditorAction.Deleted:
+                        if (await ConfirmAsync($"Delete \"{r.Name}\"?"))
+                        {
+                            await DeleteTemplateAsync(SelectedTemplate);
+                            Templates.Remove(SelectedTemplate);
+                            SelectedTemplate = Templates.FirstOrDefault();
+                        }
+                        break;
+
+                    case TemplateEditorResult.EditorAction.Cancelled:
+                    default:
+                        break;
+                }
             }
         }
 
-        #endregion
-
         #region Token Expansion
-
-        private static readonly Regex TokenRegex = new(@"\{(Q:)?([^}]+)\}", RegexOptions.Compiled);
+        private static readonly Regex TokenRegex = new(@"\{(Q:)?([^\}]+)\}", RegexOptions.Compiled);
 
         private string ExpandTokens(string template, Func<string, string> resolver)
         {
@@ -394,10 +471,9 @@ namespace CmdRunnerPro.ViewModels
             {
                 bool quote = m.Groups[1].Success;
                 string rawKey = m.Groups[2].Value.Trim();
-
                 string value = resolver(rawKey);
                 if (value == null)
-                    return m.Value; // unknown token; leave as-is
+                    return m.Value;
 
                 if (quote && value.Contains(' '))
                     return $"\"{value}\"";
@@ -408,10 +484,6 @@ namespace CmdRunnerPro.ViewModels
 
         private Func<string, string> buildRuntimeTokenMap()
         {
-            // README tokens & aliases: {comport1},{comport2},{username},{password},{opco},{program},{wd},
-            // aliases {COM1},{COM2},{FIELD3..6},{WD}, and {Q:token} variant.  [2](https://stackoverflow.com/questions/18126559/how-can-i-download-a-single-raw-file-from-a-private-github-repo-using-the-comman)
-
-            // Precompute WD
             var wd = string.IsNullOrWhiteSpace(WorkingDirectory) ? Environment.CurrentDirectory : WorkingDirectory;
 
             return key =>
@@ -434,7 +506,6 @@ namespace CmdRunnerPro.ViewModels
 
                     case "password":
                     case "FIELD6":
-                        // At runtime your logs redact secrets—this returns the raw value for actual execution.
                         return Password ?? "";
 
                     case "opco":
@@ -453,19 +524,224 @@ namespace CmdRunnerPro.ViewModels
             };
         }
 
+        private void UpdateTemplatePreview()
+        {
+            var t = SelectedTemplate?.TemplateText ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(t))
+            {
+                TemplateContent = string.Empty;
+                return;
+            }
+
+            var expanded = ExpandTokens(t, buildRuntimeTokenMap());
+            TemplateContent = expanded;
+        }
         #endregion
 
-        #region Theme / Ports / Seed (placeholders you can replace with your services)
+        #region Theme
+        private bool _isDarkTheme;
+        public bool IsDarkTheme
+        {
+            get => _isDarkTheme;
+            set
+            {
+                if (_isDarkTheme != value)
+                {
+                    _isDarkTheme = value;
+
+                    OnPropertyChanged(nameof(IsDarkTheme));
+                    ApplyTheme(); // <- critical
+                }
+            }
+        }
+
+        private string _primaryColor = "Blue";
+        public string PrimaryColor
+        {
+            get => _primaryColor;
+            set
+            {
+                if (Set(ref _primaryColor, value))
+                {
+                    ApplyTheme();
+                    SaveThemeSettings();
+                }
+            }
+        }
+
+        private string _secondaryColor = "Amber";
+        public string SecondaryColor
+        {
+            get => _secondaryColor;
+            set
+            {
+                if (Set(ref _secondaryColor, value))
+                {
+                    ApplyTheme();
+                    SaveThemeSettings();
+                }
+            }
+        }
+
+        // Lists for your top-bar ComboBoxes
+        public ObservableCollection<string> MdixPrimaryColors { get; } = new(new[]
+        {
+            "Red","Pink","Purple","DeepPurple","Indigo","Blue","LightBlue","Cyan","Teal",
+            "Green","LightGreen","Lime","Yellow","Amber","Orange","DeepOrange","Brown","BlueGrey","Grey"
+        });
+
+        public ObservableCollection<string> MdixSecondaryColors { get; } = new(new[]
+        {
+            "Red","Pink","Purple","DeepPurple","Indigo","Blue","LightBlue","Cyan","Teal",
+            "Green","LightGreen","Lime","Yellow","Amber","Orange","DeepOrange"
+        });
 
         private void ApplyTheme()
         {
-            // Optional: your app already defines BundledTheme + MaterialDesign2.Defaults in App.xaml,
-            // so nothing needed here. Keep as a hook if you change themes dynamically.  [2](https://stackoverflow.com/questions/18126559/how-can-i-download-a-single-raw-file-from-a-private-github-repo-using-the-comman)
+            try
+            {
+                var helper = new MaterialDesignThemes.Wpf.PaletteHelper();
+                var theme = helper.GetTheme();
+
+                // v5 API: BaseTheme.Dark/Light (no Theme.Dark/Light)
+                theme.SetBaseTheme(
+                    IsDarkTheme
+                        ? MaterialDesignThemes.Wpf.BaseTheme.Dark
+                        : MaterialDesignThemes.Wpf.BaseTheme.Light);
+
+                // Use your bound strings (also supports hex like #FF2196F3)
+                var primaryName = string.IsNullOrWhiteSpace(PrimaryColor) ? "Blue" : PrimaryColor;
+                var secondaryName = string.IsNullOrWhiteSpace(SecondaryColor) ? "Amber" : SecondaryColor;
+
+                var primaryColor = ResolvePrimaryColor(primaryName);
+                var secondaryColor = ResolveSecondaryColor(secondaryName);
+
+                theme.SetPrimaryColor(primaryColor);     // v5: set Color directly
+                theme.SetSecondaryColor(secondaryColor);
+
+                helper.SetTheme(theme);
+            }
+            catch
+            {
+                // Swallow palette errors; keep current theme.
+            }
         }
 
+        private static System.Windows.Media.Color ResolvePrimaryColor(string name)
+        {
+            // Allow hex (#RRGGBB or #AARRGGBB)
+            if (!string.IsNullOrWhiteSpace(name) && name.StartsWith("#") &&
+                System.Windows.Media.ColorConverter.ConvertFromString(name) is System.Windows.Media.Color hex)
+                return hex;
+
+            // Parse enum value from MaterialDesignColors.PrimaryColor
+            if (System.Enum.TryParse<MaterialDesignColors.PrimaryColor>(RemoveSpaces(name), true, out var primaryEnum))
+                return MaterialDesignColors.SwatchHelper.Lookup[
+                    (MaterialDesignColors.MaterialDesignColor)primaryEnum];
+
+            // Fallback
+            return MaterialDesignColors.SwatchHelper.Lookup[
+                (MaterialDesignColors.MaterialDesignColor)MaterialDesignColors.PrimaryColor.Blue];
+        }
+
+        private static System.Windows.Media.Color ResolveSecondaryColor(string name)
+        {
+            if (!string.IsNullOrWhiteSpace(name) && name.StartsWith("#") &&
+                System.Windows.Media.ColorConverter.ConvertFromString(name) is System.Windows.Media.Color hex)
+                return hex;
+
+            if (System.Enum.TryParse<MaterialDesignColors.SecondaryColor>(RemoveSpaces(name), true, out var secondaryEnum))
+                return MaterialDesignColors.SwatchHelper.Lookup[
+                    (MaterialDesignColors.MaterialDesignColor)secondaryEnum];
+
+            return MaterialDesignColors.SwatchHelper.Lookup[
+                (MaterialDesignColors.MaterialDesignColor)MaterialDesignColors.SecondaryColor.Amber];
+        }
+
+        // ========= THEME SETTINGS (minimal file persistence) =========
+
+        // %LOCALAPPDATA%\CmdRunnerPro\theme.cfg
+        private static readonly string ThemeSettingsPath =
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                         "CmdRunnerPro", "theme.cfg");
+
+        private void LoadThemeSettings()
+        {
+            try
+            {
+                if (!File.Exists(ThemeSettingsPath))
+                    return;
+
+                foreach (var raw in File.ReadAllLines(ThemeSettingsPath))
+                {
+                    var line = raw.Trim();
+                    if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#")) continue;
+
+                    int eq = line.IndexOf('=');
+                    if (eq <= 0) continue;
+
+                    var key = line.Substring(0, eq).Trim();
+                    var value = line.Substring(eq + 1).Trim();
+
+                    switch (key)
+                    {
+                        case "IsDarkTheme":
+                            if (bool.TryParse(value, out var dark)) IsDarkTheme = dark;
+                            break;
+                        case "PrimaryColor":
+                            if (!string.IsNullOrWhiteSpace(value)) PrimaryColor = value;
+                            break;
+                        case "SecondaryColor":
+                            if (!string.IsNullOrWhiteSpace(value)) SecondaryColor = value;
+                            break;
+                    }
+                }
+                // Note: setting those properties triggers ApplyTheme() via your setters.
+            }
+            catch
+            {
+                // Ignore read/parse errors to avoid blocking startup.
+            }
+        }
+
+        private void SaveThemeSettings()
+        {
+            try
+            {
+                var dir = Path.GetDirectoryName(ThemeSettingsPath);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
+
+                var lines = new[]
+                {
+            $"IsDarkTheme={IsDarkTheme}",
+            $"PrimaryColor={PrimaryColor}",
+            $"SecondaryColor={SecondaryColor}"
+        };
+                File.WriteAllLines(ThemeSettingsPath, lines);
+            }
+            catch
+            {
+                // Ignore write errors; theme change still applies for this session.
+            }
+        }
+
+        private static string RemoveSpaces(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return string.Empty;
+            var sb = new System.Text.StringBuilder(s.Length);
+            for (int i = 0; i < s.Length; i++)
+                if (!char.IsWhiteSpace(s[i])) sb.Append(s[i]);
+            return sb.ToString();
+        }
+        #endregion
+
+        #region Theme / Ports / Seed (data init)
         private void RefreshPorts()
         {
-            var ports = SerialPort.GetPortNames().OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList();
+            var ports = SerialPort.GetPortNames()
+                                  .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
+                                  .ToList();
             ComPortOptions = new ObservableCollection<string>(ports);
         }
 
@@ -473,13 +749,12 @@ namespace CmdRunnerPro.ViewModels
         {
             if (Templates.Count > 0) return;
 
-            // Demo items: safe placeholders to demonstrate flow (replace with your persistence).
+            // Demo items: replace with your persistence
             Templates.Add(new Template
             {
                 Name = "Show COM1 & User",
                 TemplateText = "echo COM1={comport1} USER={username}"
             });
-
             Templates.Add(new Template
             {
                 Name = "Run Program (quoted if needed)",
@@ -496,13 +771,12 @@ namespace CmdRunnerPro.ViewModels
                 Opco = "OP01",
                 Program = "cmd.exe"
             });
+
             SelectedPreset = Presets.FirstOrDefault();
         }
-
         #endregion
 
         #region INotifyPropertyChanged
-
         public event PropertyChangedEventHandler PropertyChanged;
 
         protected bool Set<T>(ref T storage, T value, [CallerMemberName] string name = null)
@@ -515,15 +789,13 @@ namespace CmdRunnerPro.ViewModels
 
         protected void OnPropertyChanged([CallerMemberName] string name = null)
             => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
-
         #endregion
 
+        #region Template CRUD Helpers
         private async void NewTemplate()
         {
-            // Start with a blank model (not yet added to the collection)
             var scratch = new Template { Name = "", TemplateText = "" };
 
-            // Build the name set (no need to exclude; this item isn't in collection yet)
             var existingNames = new HashSet<string>(Templates.Select(t => t.Name), StringComparer.OrdinalIgnoreCase);
 
             var editor = new TemplateEditor();
@@ -536,13 +808,13 @@ namespace CmdRunnerPro.ViewModels
             );
             editor.DataContext = vm;
 
-            var result = await MaterialDesignThemes.Wpf.DialogHost.Show(editor, "RootDialog");
+            var result = await DialogHost.Show(editor, "RootDialog");
             if (result is TemplateEditorViewModel saved)
             {
                 saved.ApplyTo(scratch);
-                // Add to collection
                 Templates.Add(scratch);
                 SelectedTemplate = scratch;
+                UpdateTemplatePreview();
             }
         }
 
@@ -550,12 +822,12 @@ namespace CmdRunnerPro.ViewModels
         {
             if (SelectedTemplate is null) return;
 
-            // Propose a non-conflicting name
             string baseName = SelectedTemplate.Name;
             string proposal = baseName + " (copy)";
             var existingNames = new HashSet<string>(Templates.Select(t => t.Name), StringComparer.OrdinalIgnoreCase);
             int i = 2;
-            while (existingNames.Contains(proposal)) proposal = $"{baseName} (copy {i++})";
+            while (existingNames.Contains(proposal))
+                proposal = $"{baseName} (copy {i++})";
 
             var clone = new Template
             {
@@ -573,12 +845,13 @@ namespace CmdRunnerPro.ViewModels
             );
             editor.DataContext = vm;
 
-            var result = await MaterialDesignThemes.Wpf.DialogHost.Show(editor, "RootDialog");
+            var result = await DialogHost.Show(editor, "RootDialog");
             if (result is TemplateEditorViewModel saved)
             {
                 saved.ApplyTo(clone);
                 Templates.Add(clone);
                 SelectedTemplate = clone;
+                UpdateTemplatePreview();
             }
         }
 
@@ -586,7 +859,6 @@ namespace CmdRunnerPro.ViewModels
         {
             if (SelectedTemplate is null) return;
 
-            // Quick confirm (use DialogHost with a custom view if you prefer)
             var answer = System.Windows.MessageBox.Show(
                 $"Delete template \"{SelectedTemplate.Name}\"?",
                 "Confirm Delete",
@@ -595,68 +867,357 @@ namespace CmdRunnerPro.ViewModels
 
             if (answer != System.Windows.MessageBoxResult.Yes) return;
 
-            // Optional: prevent delete if referenced by sequences/presets
-            // if (IsTemplateReferenced(SelectedTemplate.Name)) { ... warn ... return; }
-
             var oldName = SelectedTemplate.Name;
             Templates.Remove(SelectedTemplate);
 
-            // Optional: clean-up references (or prompt)
             RemoveTemplateFromReferences(oldName);
 
             SelectedTemplate = Templates.FirstOrDefault();
-
-
+            UpdateTemplatePreview();
         }
+        #endregion
 
-        public ObservableCollection<Sequence> Sequences { get; } = new();
-
-        public class Sequence
-        {
-            public List<string> TemplateNames { get; set; } = new();
-        }
-
-        #region Template reference maintenance (Presets only, safe to add even if Sequences aren’t wired yet)
-
-        /// <summary>
-        /// Update all references to a template name after a rename (e.g., in Presets).
-        /// Safe no-op if nothing references the template.
-        /// </summary>
+        #region Template reference maintenance
         private void RenameTemplateInReferences(string oldName, string newName)
         {
             if (string.IsNullOrWhiteSpace(oldName) || string.IsNullOrWhiteSpace(newName))
                 return;
 
-            // Update Presets
             foreach (var preset in Presets ?? Enumerable.Empty<InputPreset>())
             {
                 if (string.Equals(preset.TemplateName, oldName, StringComparison.OrdinalIgnoreCase))
                     preset.TemplateName = newName;
             }
-
-            // Notify if your UI binds to these collections/properties
             OnPropertyChanged(nameof(Presets));
         }
 
-        /// <summary>
-        /// Remove any references to a template after delete (e.g., Presets).
-        /// </summary>
         private void RemoveTemplateFromReferences(string oldName)
         {
-            if (string.IsNullOrWhiteSpace(oldName))
-                return;
+            if (string.IsNullOrWhiteSpace(oldName)) return;
 
-            // Clear preset references that pointed at the deleted template
             foreach (var preset in Presets ?? Enumerable.Empty<InputPreset>())
             {
                 if (string.Equals(preset.TemplateName, oldName, StringComparison.OrdinalIgnoreCase))
                     preset.TemplateName = null;
             }
-
             OnPropertyChanged(nameof(Presets));
         }
-
         #endregion
+
+        #region App Settings (timestamps)
+        public SettingsViewModel Settings { get; } = new SettingsViewModel();
+
+        public class SettingsViewModel : INotifyPropertyChanged
+        {
+            private bool _showTimestamps = true;
+            public bool ShowTimestamps
+            {
+                get => _showTimestamps;
+                set { if (_showTimestamps != value) { _showTimestamps = value; OnPropertyChanged(); } }
+            }
+
+            public event PropertyChangedEventHandler PropertyChanged;
+            private void OnPropertyChanged([CallerMemberName] string name = null)
+                => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        }
+        #endregion
+
+        // Preset persistence
+        private static readonly string PresetsPath =
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                         "CmdRunnerPro", "presets.json");
+
+        private static readonly string LastUsedPath =
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                         "CmdRunnerPro", "lastused.json");
+
+        // small DTOs for persistence
+        private sealed class TokenSnapshot
+        {
+            public string SelectedCom1 { get; set; }
+            public string SelectedCom2 { get; set; }
+            public string Username { get; set; }
+            public string Password { get; set; }
+            public string Opco { get; set; }
+            public string Program { get; set; }
+            public string WorkingDirectory { get; set; }
+        }
+
+        private sealed class LastUsedState
+        {
+            public string PresetName { get; set; }
+            public TokenSnapshot Tokens { get; set; }
+        }
+
+        private void EnsureDataDir()
+        {
+            var dir = Path.GetDirectoryName(PresetsPath);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                Directory.CreateDirectory(dir);
+        }
+
+        private void LoadPresetsFromDisk()
+        {
+            try
+            {
+                EnsureDataDir();
+                if (!File.Exists(PresetsPath)) return;
+
+                var list = JsonSerializer.Deserialize<List<InputPreset>>(File.ReadAllText(PresetsPath))
+                           ?? new List<InputPreset>();
+
+                Presets = new ObservableCollection<InputPreset>(list);
+                OnPropertyChanged(nameof(Presets));
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        private void SavePresetsToDisk()
+        {
+            try
+            {
+                EnsureDataDir();
+                File.WriteAllText(PresetsPath,
+                    JsonSerializer.Serialize(Presets, new JsonSerializerOptions { WriteIndented = true }));
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+        private void DeletePreset()
+        {
+            if (SelectedPreset is null) return;
+
+            var removedName = SelectedPreset.Name;
+            Presets.Remove(SelectedPreset);
+
+            // choose next available preset (if any)
+            SelectedPreset = Presets.FirstOrDefault();
+
+            SavePresetsToDisk();
+            SaveLastUsed();
+            RaiseCommandCanExecuteChanged();
+        }
+
+        private TokenSnapshot CaptureTokens() => new TokenSnapshot
+        {
+            SelectedCom1 = SelectedCom1,
+            SelectedCom2 = SelectedCom2,
+            Username = Username,
+            Password = Password,
+            Opco = Opco,
+            Program = Program,
+            WorkingDirectory = WorkingDirectory
+        };
+
+        private void ApplyTokens(TokenSnapshot t)
+        {
+            if (t == null) return;
+            SelectedCom1 = t.SelectedCom1;
+            SelectedCom2 = t.SelectedCom2;
+            Username = t.Username;
+            Password = t.Password;
+            Opco = t.Opco;
+            Program = t.Program;
+            WorkingDirectory = t.WorkingDirectory;
+            UpdateTemplatePreview();
+        }
+
+        private void SaveLastUsed()
+        {
+            try
+            {
+                EnsureDataDir();
+                var state = new LastUsedState
+                {
+                    PresetName = SelectedPreset?.Name,
+                    Tokens = CaptureTokens()
+                };
+                File.WriteAllText(LastUsedPath,
+                    JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true }));
+            }
+            catch { /* ignore */ }
+        }
+
+        private void LoadLastUsed()
+        {
+            try
+            {
+                if (!File.Exists(LastUsedPath)) return;
+                var state = JsonSerializer.Deserialize<LastUsedState>(File.ReadAllText(LastUsedPath));
+                if (state == null) return;
+
+                // If a preset name was saved and exists now, use it; otherwise use the tokens snapshot.
+                if (!string.IsNullOrWhiteSpace(state.PresetName))
+                {
+                    var match = Presets?.FirstOrDefault(p => string.Equals(p.Name, state.PresetName,
+                                         StringComparison.OrdinalIgnoreCase));
+                    if (match != null)
+                    {
+                        SelectedPreset = match;
+                        LoadPreset(match);
+                        return;
+                    }
+                }
+
+                // Fallback to raw tokens (ad-hoc last session)
+                ApplyTokens(state.Tokens);
+            }
+            catch { /* ignore */ }
+        }
+        private void SavePreset()
+        {
+            // Update currently selected preset if any; otherwise create a new one with a generated name
+            if (SelectedPreset is InputPreset p)
+            {
+                FillPresetFromCurrent(p);
+            }
+            else
+            {
+                var pnew = new InputPreset { Name = GenerateUniquePresetName() };
+                FillPresetFromCurrent(pnew);
+                Presets.Add(pnew);
+                SelectedPreset = pnew;
+            }
+
+            SavePresetsToDisk();
+            SaveLastUsed();
+            RaiseCommandCanExecuteChanged();
+        }
+
+        private void SavePresetAs()
+        {
+            // Save a copy regardless of SelectedPreset (create new)
+            var pnew = new InputPreset { Name = GenerateUniquePresetName() };
+            FillPresetFromCurrent(pnew);
+            Presets.Add(pnew);
+            SelectedPreset = pnew;
+
+            SavePresetsToDisk();
+            SaveLastUsed();
+            RaiseCommandCanExecuteChanged();
+        }
+
+        private void FillPresetFromCurrent(InputPreset p)
+        {
+            p.TemplateName = SelectedTemplate?.Name;
+            p.Com1 = SelectedCom1;
+            p.Com2 = SelectedCom2;
+            p.Username = Username;
+            p.Password = Password;
+            p.Opco = Opco;
+            p.Program = Program;
+            p.WorkingDirectory = WorkingDirectory;
+        }
+
+        private string GenerateUniquePresetName()
+        {
+            var baseName = "Preset";
+            int i = 1;
+            var existing = new HashSet<string>(Presets.Select(x => x.Name ?? ""), StringComparer.OrdinalIgnoreCase);
+            string name = baseName;
+            while (existing.Contains(name))
+                name = $"{baseName} {++i}";
+            return name;
+        }
+        public string SelectedCom1
+        {
+            get => _selectedCom1;
+            set { if (Set(ref _selectedCom1, value)) { UpdateTemplatePreview(); SaveLastUsed(); } }
+        }
+
+        public string SelectedCom2
+        {
+            get => _selectedCom2;
+            set { if (Set(ref _selectedCom2, value)) { UpdateTemplatePreview(); SaveLastUsed(); } }
+        }
+
+        public string Username
+        {
+            get => _username;
+            set { if (Set(ref _username, value)) { UpdateTemplatePreview(); SaveLastUsed(); } }
+        }
+
+        public string Password
+        {
+            get => _password;
+            set { if (Set(ref _password, value)) { UpdateTemplatePreview(); SaveLastUsed(); } }
+        }
+
+        public string Opco
+        {
+            get => _opco;
+            set { if (Set(ref _opco, value)) { UpdateTemplatePreview(); SaveLastUsed(); } }
+        }
+
+        public string Program
+        {
+            get => _program;
+            set { if (Set(ref _program, value)) { UpdateTemplatePreview(); SaveLastUsed(); } }
+        }
+
+        public string WorkingDirectory
+        {
+            get => _workingDirectory;
+            set { if (Set(ref _workingDirectory, value)) { UpdateTemplatePreview(); SaveLastUsed(); } }
+        }
+
+        private static readonly JsonSerializerOptions _json = new() { WriteIndented = true };
+
+        // Choose where to store the template files:
+        private static string TemplatesFolder =>
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                         "CmdRunnerPro_v2", "Templates");
+
+        private static string PathFor(Template t) => Path.Combine(TemplatesFolder, $"{t.Id}.json");
+
+        private async Task SaveTemplateAsync(Template t)
+        {
+            Directory.CreateDirectory(TemplatesFolder);
+            var path = PathFor(t);
+            using var fs = File.Create(path);
+            await JsonSerializer.SerializeAsync(fs, t, _json);
+        }
+
+        private Task DeleteTemplateAsync(Template t)
+        {
+            var path = PathFor(t);
+            if (File.Exists(path)) File.Delete(path);
+            return Task.CompletedTask;
+        }
+
+        private Task<bool> ConfirmAsync(string message)
+        {
+            var result = MessageBox.Show(message, "Confirm", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            return Task.FromResult(result == MessageBoxResult.Yes);
+        }
+
+        // Optional: call at startup to load/refresh the list
+        private async Task LoadTemplatesAsync()
+        {
+            Directory.CreateDirectory(TemplatesFolder);
+            var items = new ObservableCollection<Template>();
+
+            foreach (var file in Directory.EnumerateFiles(TemplatesFolder, "*.json"))
+            {
+                try
+                {
+                    await using var fs = File.OpenRead(file);
+                    var model = await JsonSerializer.DeserializeAsync<Template>(fs);
+                    if (model is not null)
+                        items.Add(model);
+                }
+                catch { /* ignore bad files */ }
+            }
+
+            // Sort by Name (optional)
+            Templates = new ObservableCollection<Template>(items.OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase));
+            SelectedTemplate = Templates.FirstOrDefault();
+        }
 
     }
 }

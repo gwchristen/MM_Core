@@ -4,9 +4,14 @@
         xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
         xmlns:local="clr-namespace:CmdRunnerPro.Views"
         xmlns:utils="clr-namespace:CmdRunnerPro.Utilities"
+        
+        TextElement.Foreground="{DynamicResource MaterialDesignBody}"
+        Background="{DynamicResource MaterialDesignPaper}"
+        FontFamily="{DynamicResource MaterialDesignFont}"
+
         xmlns:conv="clr-namespace:CmdRunnerPro"
         Title="CMD Runner Pro"
-        Width="1100" Height="700"
+        Width="1100" Height="Auto"
         Style="{StaticResource MaterialDesignWindow}">
     <Window.Resources>
         <conv:NullToBoolConverter x:Key="NullToBool"/>
@@ -25,7 +30,7 @@
                 <TextBlock Text="Primary:" VerticalAlignment="Center" Margin="12,0,4,0"/>
                 <ComboBox Width="120"
                           SelectedItem="{Binding PrimaryColor, Mode=TwoWay}"
-                          ItemsSource="{Binding MdixPrimaryColors}" />
+                          ItemsSource="{Binding MdixPrimaryColors}" SelectionChanged="ComboBox_SelectionChanged" />
                 <TextBlock Text="Secondary:" VerticalAlignment="Center" Margin="12,0,4,0"/>
                 <ComboBox Width="120"
                           SelectedItem="{Binding SecondaryColor, Mode=TwoWay}"
@@ -35,108 +40,203 @@
                           Margin="16,0,0,0" VerticalAlignment="Center"/>
             </StackPanel>
 
+            <StackPanel Orientation="Horizontal" Margin="2,0,0,0">
+                <Border Width="6" Height="6" CornerRadius="4"
+                        Background="{DynamicResource PrimaryHueMidBrush}"
+                        Margin="2,0,0,0"/>
+                <Border Width="6" Height="6" CornerRadius="4"
+                        Background="{DynamicResource SecondaryAccentBrush}"
+                        Margin="2,0,0,0"/>
+            </StackPanel>
+
+
             <!-- Body -->
             <Grid Margin="8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="360"/>
+                    <!-- Left: Inputs + Presets -->
                     <ColumnDefinition Width="10"/>
+                    <!-- Spacer -->
                     <ColumnDefinition Width="*"/>
+                    <!-- Right: Preview (top) + Output (bottom) -->
                 </Grid.ColumnDefinitions>
 
-                <!-- Inputs + Presets -->
+                <!-- ========== Left: Inputs + Presets ========== -->
                 <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="0,0,8,0">
 
                         <TextBlock Text="Inputs" FontWeight="SemiBold" Margin="0,0,0,4"/>
                         <StackPanel Orientation="Vertical" Margin="0,0,0,12">
                             <ComboBox Style="{StaticResource MaterialDesignOutlinedComboBox}"
-                                      materialDesign:HintAssist.Hint="COM1"
-                                      ItemsSource="{Binding Ports}"
-                                      SelectedItem="{Binding SelectedCom1}"
-                                      DisplayMemberPath="Name"/>
+                          ItemsSource="{Binding ComPortOptions}"
+                          SelectedItem="{Binding SelectedCom1}" />
+
                             <ComboBox Style="{StaticResource MaterialDesignOutlinedComboBox}"
-                                      materialDesign:HintAssist.Hint="COM2"
-                                      ItemsSource="{Binding Ports}"
-                                      SelectedItem="{Binding SelectedCom2}"
-                                      DisplayMemberPath="Name" Margin="0,8,0,0"/>
+                          ItemsSource="{Binding ComPortOptions}"
+                          SelectedItem="{Binding SelectedCom2}"
+                          Margin="0,8,0,0" />
+
                             <TextBox Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                     materialDesign:HintAssist.Hint="Username"
-                                     Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}" Margin="0,8,0,0"/>
+                         materialDesign:HintAssist.Hint="Username"
+                         Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
+                         Margin="0,8,0,0"/>
+
                             <PasswordBox Style="{StaticResource MaterialDesignOutlinedPasswordBox}"
-                                         materialDesign:HintAssist.Hint="Password"
-                                         utils:PasswordBoxHelper.BindPassword="True"
-                                         utils:PasswordBoxHelper.BoundPassword="{Binding Password, Mode=TwoWay}" Margin="0,8,0,0"/>
+                             materialDesign:HintAssist.Hint="Password"
+                             utils:PasswordBoxHelper.BindPassword="True"
+                             utils:PasswordBoxHelper.BoundPassword="{Binding Password, Mode=TwoWay}"
+                             Margin="0,8,0,0"/>
+
                             <TextBox Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                     materialDesign:HintAssist.Hint="Opco"
-                                     Text="{Binding Opco}" Margin="0,8,0,0"/>
+                         materialDesign:HintAssist.Hint="Opco"
+                         Text="{Binding Opco}" Margin="0,8,0,0"/>
+
                             <TextBox Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                     materialDesign:HintAssist.Hint="Program"
-                                     Text="{Binding Program}" Margin="0,8,0,0"/>
+                         materialDesign:HintAssist.Hint="Program"
+                         Text="{Binding Program}" Margin="0,8,0,0"/>
+
                             <DockPanel Margin="0,8,0,0">
                                 <TextBox Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                         materialDesign:HintAssist.Hint="Working Directory"
-                                         Text="{Binding WorkingDirectory}" />
+                             materialDesign:HintAssist.Hint="Working Directory"
+                             Text="{Binding WorkingDirectory}" />
                                 <Button Content="Browse"
-                                        Command="{Binding BrowseWorkingDirectoryCommand}"
-                                        Style="{StaticResource MaterialDesignOutlinedButton}"
-                                        Margin="8,0,0,0" />
+                            Command="{Binding BrowseWorkingDirectoryCommand}"
+                            Style="{StaticResource MaterialDesignOutlinedButton}"
+                            Margin="8,0,0,0" />
                             </DockPanel>
                         </StackPanel>
 
-                        <TextBlock Text="Template" FontWeight="SemiBold" Margin="0,8,0,4"/>
-                        <ComboBox Style="{StaticResource MaterialDesignOutlinedComboBox}"
-                                  materialDesign:HintAssist.Hint="Select Template"
-                                  ItemsSource="{Binding Templates}"
-                                  SelectedItem="{Binding SelectedTemplate}"
-                                  DisplayMemberPath="Name"/>
-                        <Button Content="Edit Template"
-                                Command="{Binding OpenTemplateEditorCommand}"
-                                Style="{StaticResource MaterialDesignOutlinedButton}"
-                                Margin="0,8,0,0"/>
+                        <!-- Removed old "Template" picker from the left. It now lives beside Command Preview on the right. -->
 
                         <Separator Margin="0,12,0,12"/>
 
                         <TextBlock Text="Presets" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                        <ListBox x:Name="PresetsList"
-                                 ItemsSource="{Binding Presets}"
-                                 SelectedItem="{Binding SelectedPreset}"
-                                 DisplayMemberPath="Name"
-                                 Height="160"/>
+                        <ComboBox x:Name="PresetsList"
+                      ItemsSource="{Binding Presets}"
+                      SelectedItem="{Binding SelectedPreset}"
+                      DisplayMemberPath="Name"
+                      Height="Auto"/>
+
                         <Button Content="Load Preset"
-                                Command="{Binding LoadPresetCommand}"
-                                CommandParameter="{Binding SelectedItem, ElementName=PresetsList}"
-                                Style="{StaticResource MaterialDesignRaisedButton}"
-                                Margin="0,8,0,0"/>
+                    Command="{Binding LoadPresetCommand}"
+                    CommandParameter="{Binding SelectedItem, ElementName=PresetsList}"
+                    Style="{StaticResource MaterialDesignRaisedButton}"
+                    Margin="0,8,0,0"/>
+
+                        <Button Content="Save Preset"
+                    Command="{Binding SavePresetCommand}"
+                    Margin="0,8,0,0"/>
+
+
+                        <DockPanel Margin="0,8,0,0" LastChildFill="True">
+                            <!-- Right aligned -->
+                            <Button Content="Delete Preset"
+                                    Command="{Binding DeletePresetCommand}"
+                                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                                    DockPanel.Dock="Right"
+                                    Width="170" />
+
+                            <!-- Left aligned -->
+                            <Button Content="Save As..."
+                                    Command="{Binding SavePresetAsCommand}"
+                                    Width="170"
+                                    HorizontalAlignment="Left" />
+                        </DockPanel>
+
+
                     </StackPanel>
                 </ScrollViewer>
 
+                <!-- ========== Right: Command Preview (top) + Output (bottom) ========== -->
                 <Grid Grid.Column="2">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
+                        <!-- Preview header (with Templates) -->
+                        <RowDefinition Height="2*"/>
+                        <!-- Preview body -->
                         <RowDefinition Height="Auto"/>
+                        <!-- Output header -->
+                        <RowDefinition Height="3*"/>
+                        <!-- Output body -->
                     </Grid.RowDefinitions>
 
-                    <TextBlock Text="Output"
-                               FontWeight="SemiBold"
-                               Margin="0,0,0,4"/>
+                    <!-- Command Preview header + Templates picker to the right -->
+                    <DockPanel Grid.Row="0" LastChildFill="True" Margin="0,0,0,8">
+                        <TextBlock Text="Command Preview"
+                       FontSize="16" FontWeight="SemiBold"
+                       VerticalAlignment="Center"
+                       DockPanel.Dock="Left"/>
 
-                    <Border Grid.Row="1" BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="1"
-                            Padding="4">
-                        <ListBox ItemsSource="{Binding OutputLines}"
-                                 FontFamily="Consolas"
-                                 FontSize="12"/>
+                        <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        DockPanel.Dock="Right">
+                            <TextBlock Text="Template:"
+                           VerticalAlignment="Center"
+                           Margin="12,0,6,0"/>
+                            <ComboBox Style="{StaticResource MaterialDesignOutlinedComboBox}"
+                          ItemsSource="{Binding Templates}"
+                          SelectedItem="{Binding SelectedTemplate}"
+                          DisplayMemberPath="Name"
+                          Width="240" />
+                            <Button Content="Edit"
+                        Command="{Binding OpenTemplateEditorCommand}"
+                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                        Margin="8,0,0,0"/>
+                        </StackPanel>
+                    </DockPanel>
+
+                    <!-- Command Preview body -->
+                    <Border Grid.Row="1"
+                Padding="8" CornerRadius="4"
+                Background="{DynamicResource MaterialDesignPaper}"
+                BorderBrush="{DynamicResource MaterialDesignDivider}"
+                BorderThickness="1">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <TextBox Text="{Binding TemplateContent, Mode=OneWay}"
+                         IsReadOnly="True"
+                         TextWrapping="Wrap"
+                         AcceptsReturn="True"
+                         BorderThickness="0"
+                         Background="Transparent"
+                         FontFamily="Consolas"
+                         FontSize="13"/>
+                        </ScrollViewer>
                     </Border>
 
-                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0">
-                        <Button Content="Run"
-                                Command="{Binding RunCommand}"
-                                Style="{StaticResource MaterialDesignRaisedButton}"/>
-                        <Button Content="Stop"
-                                Command="{Binding StopCommand}"
-                                Style="{StaticResource MaterialDesignOutlinedButton}"
-                                Margin="8,0,0,0"/>
-                    </StackPanel>
+                    <!-- Output header -->
+                    <TextBlock Grid.Row="2"
+                   Text="Output"
+                   FontSize="16" FontWeight="SemiBold"
+                   Margin="0,12,0,8" />
+
+                    <!-- Output body -->
+                    <Border Grid.Row="3"
+                Padding="8" CornerRadius="4"
+                Background="{DynamicResource MaterialDesignPaper}"
+                BorderBrush="{DynamicResource MaterialDesignDivider}"
+                BorderThickness="1">
+                        <ListBox x:Name="OutputList"
+                     ItemsSource="{Binding OutputLines}"
+                     FontFamily="Consolas"
+                     FontSize="12"
+                     Background="Transparent"
+                     BorderThickness="0"/>
+                    </Border>
+                    
+                    <!-- Bottom buttons (kept as-is) -->
+                        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0">
+                            <Button Content="Run"
+                                    Command="{Binding RunCommand}"
+                                    Style="{StaticResource MaterialDesignRaisedButton}"/>
+                            <Button Content="Stop"
+                                    Command="{Binding StopCommand}"
+                                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                                    Margin="8,0,0,0"/>
+                            <Button Content="Clear"
+                                    Command="{Binding ClearOutputCommand}"
+                                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                                    Margin="8,0,0,0"/>
+                        </StackPanel>
                 </Grid>
             </Grid>
         </DockPanel>
