@@ -60,9 +60,11 @@ namespace CmdRunnerPro.ViewModels
             //SavePresetAsCommand = new RelayCommand(SavePresetAs, () => true);
             DeletePresetCommand = new RelayCommand(DeletePreset, () => SelectedPreset != null);
 
-            // in ctor
             SavePresetAsCommand = new RelayCommand(async () => await SavePresetAsAsync(), () => true);
             SavePresetCommand = new RelayCommand(SavePreset, () => true);
+
+            // View toggle
+            ToggleViewModeCommand = new RelayCommand(() => IsAdvancedMode = !IsAdvancedMode);
 
             // Initialize data
             RefreshPorts();
@@ -250,6 +252,14 @@ namespace CmdRunnerPro.ViewModels
                     : $"{OutputLog}{Environment.NewLine}{line}";
             });
         }
+
+        private bool _isAdvancedMode = true;
+        public bool IsAdvancedMode
+        {
+            get => _isAdvancedMode;
+            set => Set(ref _isAdvancedMode, value);
+        }
+
         #endregion
 
         #region Commands
@@ -265,6 +275,7 @@ namespace CmdRunnerPro.ViewModels
         public ICommand SavePresetCommand { get; }
         public ICommand SavePresetAsCommand { get; }
         public ICommand DeletePresetCommand { get; }
+        public ICommand ToggleViewModeCommand { get; }
 
         private void RaiseCommandCanExecuteChanged()
         {
@@ -1298,5 +1309,6 @@ namespace CmdRunnerPro.ViewModels
             }
             return false;
         }
+
     }
 }
