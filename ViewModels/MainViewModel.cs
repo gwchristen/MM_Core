@@ -1,4 +1,4 @@
-// ViewModels/MainViewModel.cs
+﻿// ViewModels/MainViewModel.cs
 using CmdRunnerPro.Models;           // Template, InputPreset
 using CmdRunnerPro.Views;            // TemplateEditor (UserControl)
 using MaterialDesignThemes.Wpf;      // DialogHost, BaseTheme, PaletteHelper
@@ -18,6 +18,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using WinForms = System.Windows.Forms;
 
 namespace CmdRunnerPro.ViewModels
@@ -27,6 +28,7 @@ namespace CmdRunnerPro.ViewModels
         #region Fields
         private Process _currentProcess;
         private CancellationTokenSource _runCts;
+        private readonly Dispatcher _uiDispatcher;
 
         // App settings (theme + timestamps)
         private readonly string _configDir;
@@ -54,8 +56,12 @@ namespace CmdRunnerPro.ViewModels
 
 
             SavePresetCommand = new RelayCommand(SavePreset, () => true);
-            SavePresetAsCommand = new RelayCommand(SavePresetAs, () => true);
+            //SavePresetAsCommand = new RelayCommand(SavePresetAs, () => true);
             DeletePresetCommand = new RelayCommand(DeletePreset, () => SelectedPreset != null);
+
+            // in ctor
+            SavePresetAsCommand = new RelayCommand(async () => await SavePresetAsAsync(), () => true);
+            SavePresetCommand = new RelayCommand(SavePreset, () => true);
 
             // Initialize data
             RefreshPorts();
@@ -76,8 +82,20 @@ namespace CmdRunnerPro.ViewModels
 
             // Initial preview
             UpdateTemplatePreview();
+
+            // ... your existing ctor code ...
+            _uiDispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+            // Initial preview
+            UpdateTemplatePreview();
         }
         #endregion
+
+        private void OnUI(Action action)
+        {
+            if (action == null) return;
+            if (_uiDispatcher?.CheckAccess() == true) action();
+            else _uiDispatcher?.Invoke(action);
+        }
 
         #region Collections & Selection
         private ObservableCollection<Template> _templates = new();
@@ -200,12 +218,18 @@ namespace CmdRunnerPro.ViewModels
         private void AppendOutput(string text)
         {
             if (string.IsNullOrEmpty(text)) return;
-            string line = Settings?.ShowTimestamps == true
-                ? $"[{DateTime.Now:HH:mm:ss}] {text}"
-                : text;
 
-            OutputLines.Add(line);
-            OutputLog = string.IsNullOrEmpty(OutputLog) ? line : $"{OutputLog}{Environment.NewLine}{line}";
+            OnUI(() =>
+            {
+                string line = Settings?.ShowTimestamps == true
+                    ? $"[{DateTime.Now:HH:mm:ss}] {text}"
+                    : text;
+
+                OutputLines.Add(line);
+                OutputLog = string.IsNullOrEmpty(OutputLog)
+                    ? line
+                    : $"{OutputLog}{Environment.NewLine}{line}";
+            });
         }
         #endregion
 
@@ -215,7 +239,7 @@ namespace CmdRunnerPro.ViewModels
         public ICommand StopCommand { get; }
         public ICommand BrowseWorkingDirectoryCommand { get; }
         public ICommand OpenTemplateEditorCommand { get; }
-        public ICommand EditTemplateCommand { get; }   // <� alias for XAML that still uses "Edit"
+        public ICommand EditTemplateCommand { get; }   // <— alias for XAML that still uses "Edit"
         public ICommand NewTemplateCommand { get; }
         public ICommand CloneTemplateCommand { get; }
         public ICommand DeleteTemplateCommand { get; }
@@ -229,10 +253,13 @@ namespace CmdRunnerPro.ViewModels
             (RunCommand as RelayCommand)?.RaiseCanExecuteChanged();
             (StopCommand as RelayCommand)?.RaiseCanExecuteChanged();
             (OpenTemplateEditorCommand as RelayCommand)?.RaiseCanExecuteChanged();
-            (EditTemplateCommand as RelayCommand)?.RaiseCanExecuteChanged();   // <� add this line
+            (EditTemplateCommand as RelayCommand)?.RaiseCanExecuteChanged();   // <— add this line
             (NewTemplateCommand as RelayCommand)?.RaiseCanExecuteChanged();
             (CloneTemplateCommand as RelayCommand)?.RaiseCanExecuteChanged();
             (DeleteTemplateCommand as RelayCommand)?.RaiseCanExecuteChanged();
+
+
+
         }
         #endregion
 
@@ -264,10 +291,10 @@ namespace CmdRunnerPro.ViewModels
         #endregion
 
         #region Run / Stop
+
         private async Task RunSelectedAsync()
         {
             if (SelectedTemplate == null) return;
-
             _runCts?.Cancel();
             _runCts = new CancellationTokenSource();
 
@@ -275,7 +302,7 @@ namespace CmdRunnerPro.ViewModels
             {
                 AppendOutput($"--- Running template: {SelectedTemplate.Name} ---");
 
-                var command = ExpandTokens(SelectedTemplate.TemplateText, buildRuntimeTokenMap());
+                var command = ExpandTokens(SelectedTemplate.TemplateText, BuildTokenResolver(maskPassword: false));
                 var wd = string.IsNullOrWhiteSpace(WorkingDirectory) ? Environment.CurrentDirectory : WorkingDirectory;
 
                 var psi = new ProcessStartInfo
@@ -289,14 +316,29 @@ namespace CmdRunnerPro.ViewModels
                     CreateNoWindow = true
                 };
 
+
                 _currentProcess = new Process { StartInfo = psi, EnableRaisingEvents = true };
-                _currentProcess.OutputDataReceived += (_, e) => { if (e.Data != null) AppendOutput(e.Data); };
-                _currentProcess.ErrorDataReceived += (_, e) => { if (e.Data != null) AppendOutput("[ERR] " + e.Data); };
+
+                _currentProcess.OutputDataReceived += (_, e) =>
+                {
+                    if (e.Data != null) AppendOutput(e.Data); // this already marshals
+                };
+
+                _currentProcess.ErrorDataReceived += (_, e) =>
+                {
+                    if (e.Data != null) AppendOutput("[ERR] " + e.Data); // marshaled
+                };
+
                 _currentProcess.Exited += (_, __) =>
                 {
-                    AppendOutput($"--- Process exited (Code: {_currentProcess.ExitCode}) ---");
-                    RaiseCommandCanExecuteChanged();
+                    // Exited is raised on a non-UI thread; ensure both the output and the command requery are on UI
+                    OnUI(() =>
+                    {
+                        AppendOutput($"--- Process exited (Code: {_currentProcess.ExitCode}) ---");
+                        RaiseCommandCanExecuteChanged();
+                    });
                 };
+
 
                 bool started = _currentProcess.Start();
                 RaiseCommandCanExecuteChanged();
@@ -369,7 +411,6 @@ namespace CmdRunnerPro.ViewModels
             var template = isNew
                 ? new Template { Name = UniqueName("New Template"), TemplateText = "" }
                 : SelectedTemplate;
-
             var originalName = template.Name;
 
             var vm = new TemplateEditorViewModel(
@@ -387,27 +428,21 @@ namespace CmdRunnerPro.ViewModels
                 });
 
             var view = new TemplateEditor { DataContext = vm };
-            var result = await MaterialDesignThemes.Wpf.DialogHost.Show(view, "RootDialog");
 
-            if (result is TemplateEditorResult r)
+            // Persist operations WHILE the editor stays open
+            async void OnOperationRequested(TemplateEditorResult r)
             {
                 switch (r.Action)
                 {
                     case TemplateEditorResult.EditorAction.Saved:
                         {
-                            if (isNew)
-                            {
-                                // Persist new item and add to list
-                                await SaveTemplateAsync(template, originalName: null);
-                                Templates.Add(template);
-                                Reselect(template.Name);
-                            }
-                            else
-                            {
-                                // Rename-aware save (deletes old file if name changed)
-                                await SaveTemplateAsync(template, originalName);
-                                Reselect(template.Name);
-                            }
+                            // VM already applied its working copy to 'template'
+                            await SaveTemplateAsync(template, originalName);
+                            originalName = template.Name; // in case it was renamed
+
+                            Templates = new ObservableCollection<Template>(
+                                Templates.OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase));
+                            Reselect(template.Name);
                             break;
                         }
 
@@ -419,7 +454,6 @@ namespace CmdRunnerPro.ViewModels
                                 Name = newName,
                                 TemplateText = r.TemplateText ?? string.Empty
                             };
-
                             await SaveTemplateAsync(copy);
                             Templates.Add(copy);
                             Reselect(copy.Name);
@@ -428,32 +462,32 @@ namespace CmdRunnerPro.ViewModels
 
                     case TemplateEditorResult.EditorAction.Deleted:
                         {
-                            // If they opened a draft and then hit Delete, nothing to remove from disk.
                             if (!isNew)
                             {
                                 if (!await ConfirmAsync($"Delete \"{template.Name}\"?")) return;
+
                                 await DeleteTemplateByNameAsync(template.Name);
                                 Templates.Remove(template);
                                 SelectedTemplate = Templates.FirstOrDefault();
                             }
                             break;
                         }
-
-                    case TemplateEditorResult.EditorAction.Cancelled:
-                    default:
-                        // If draft and cancel, do nothing (it was never added)
-                        break;
                 }
             }
 
-            // Keep ComboBox sorted
+            // Subscribe, show editor, then unsubscribe (no duplicate 'result' vars)
+            vm.OperationRequested += OnOperationRequested;
+            await MaterialDesignThemes.Wpf.DialogHost.Show(view, "RootDialog");
+            vm.OperationRequested -= OnOperationRequested;
+
+            // Optional: keep ComboBox sorted after the editor closes
             Templates = new ObservableCollection<Template>(
                 Templates.OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase));
         }
 
         #endregion
 
-            #region Template CRUD helpers (New / Clone / Delete) - name-based storage
+        #region Template CRUD helpers (New / Clone / Delete) - name-based storage
         private async Task NewTemplateAsync()
         {
             var draft = new Template { Name = UniqueName("New Template"), TemplateText = "" };
@@ -566,6 +600,9 @@ namespace CmdRunnerPro.ViewModels
         }
         #endregion
 
+        private const char MaskChar = '●';
+        private static string Mask(string s) => string.IsNullOrEmpty(s) ? string.Empty : new string(MaskChar, s.Length);
+
         #region Token Expansion
         // Matches {token} and {Q:token}
         private static readonly Regex TokenRegex = new(@"\{(Q:)?([^\}]+)\}", RegexOptions.Compiled);
@@ -585,7 +622,7 @@ namespace CmdRunnerPro.ViewModels
             });
         }
 
-        private Func<string, string> buildRuntimeTokenMap()
+        private Func<string, string> BuildTokenResolver(bool maskPassword)
         {
             var wd = string.IsNullOrWhiteSpace(WorkingDirectory) ? Environment.CurrentDirectory : WorkingDirectory;
 
@@ -595,43 +632,34 @@ namespace CmdRunnerPro.ViewModels
                 {
                     case "comport1":
                     case "COM1":
-                    case "FIELD3":
-                        return SelectedCom1 ?? "";
+                    case "FIELD3": return SelectedCom1 ?? "";
                     case "comport2":
                     case "COM2":
-                    case "FIELD4":
-                        return SelectedCom2 ?? "";
+                    case "FIELD4": return SelectedCom2 ?? "";
                     case "username":
-                    case "FIELD5":
-                        return Username ?? "";
+                    case "FIELD5": return Username ?? "";
                     case "password":
-                    case "FIELD6":
-                        return Password ?? "";
-                    case "opco":
-                        return Opco ?? "";
-                    case "program":
-                        return Program ?? "";
+                    case "FIELD6": return maskPassword ? Mask(Password ?? "") : (Password ?? "");
+                    case "opco": return Opco ?? "";
+                    case "program": return Program ?? "";
                     case "wd":
-                    case "WD":
-                        return wd ?? "";
-                    default:
-                        return null;
+                    case "WD": return wd ?? "";
+                    default: return null;
                 }
             };
+
         }
+
+
 
         private void UpdateTemplatePreview()
         {
             var t = SelectedTemplate?.TemplateText ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(t))
-            {
-                TemplateContent = string.Empty;
-                return;
-            }
-
-            var expanded = ExpandTokens(t, buildRuntimeTokenMap());
-            TemplateContent = expanded;
+            TemplateContent = string.IsNullOrWhiteSpace(t) ? string.Empty
+                            : ExpandTokens(t, BuildTokenResolver(maskPassword: true));
         }
+
+
         #endregion
 
         #region Theme (minimal + resilient)
@@ -1008,12 +1036,38 @@ namespace CmdRunnerPro.ViewModels
             RaiseCommandCanExecuteChanged();
         }
 
-        private void SavePresetAs()
+        private async Task SavePresetAsAsync()
         {
-            var pnew = new InputPreset { Name = GenerateUniquePresetName() };
+            // Suggest a name
+            var suggestion =
+                !string.IsNullOrWhiteSpace(SelectedPreset?.Name)
+                ? UniquePresetName($"{SelectedPreset.Name} (Copy)")
+                : GenerateUniquePresetName();
+
+            // Show the prompt
+            var prompt = new CmdRunnerPro.Views.NamePrompt
+            {
+                Title = "Save Preset As",
+                Prompt = "Preset name",
+                Text = suggestion
+            };
+            var result = await MaterialDesignThemes.Wpf.DialogHost.Show(prompt, "RootDialog");
+
+            // If user cancelled -> result is null; ignore
+            if (result is not string raw) return;
+
+            var name = raw.Trim();
+            if (string.IsNullOrWhiteSpace(name)) return;
+
+            // Ensure unique (in case user typed a duplicate)
+            name = UniquePresetName(name);
+
+            // Create + persist new preset with that name
+            var pnew = new InputPreset { Name = name };
             FillPresetFromCurrent(pnew);
             Presets.Add(pnew);
             SelectedPreset = pnew;
+
             SavePresetsToDisk();
             SaveLastUsed();
             RaiseCommandCanExecuteChanged();
@@ -1140,5 +1194,14 @@ namespace CmdRunnerPro.ViewModels
                 t.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
         }
         #endregion
+        private string UniquePresetName(string baseName)
+        {
+            var existing = new HashSet<string>(Presets.Select(x => x?.Name ?? ""), StringComparer.OrdinalIgnoreCase);
+            if (!existing.Contains(baseName)) return baseName;
+            int i = 1;
+            string candidate;
+            do { candidate = $"{baseName} ({i++})"; } while (existing.Contains(candidate));
+            return candidate;
+        }
     }
 }

@@ -10,9 +10,11 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.IO; // for Path.GetInvalidFileNameChars
+using System.Threading.Tasks;
 
 namespace CmdRunnerPro.ViewModels
 {
@@ -36,6 +38,7 @@ namespace CmdRunnerPro.ViewModels
     /// <summary>
     /// Working-copy Template Editor VM with preview/token support and Save/Save As/Delete commands.
     /// </summary>
+
     public class TemplateEditorViewModel : INotifyPropertyChanged, INotifyDataErrorInfo
     {
         private readonly object _originalTemplate;               // original object reference for ApplyToOriginal()
@@ -43,6 +46,8 @@ namespace CmdRunnerPro.ViewModels
         private readonly StringComparer _ci = StringComparer.OrdinalIgnoreCase;
         private readonly Func<string, bool> _nameExists;
         private bool _isQuickAddTokensExpanded;
+
+        public event Action<TemplateEditorResult>? OperationRequested;
 
         public bool IsQuickAddTokensExpanded
         {
@@ -71,12 +76,15 @@ namespace CmdRunnerPro.ViewModels
             AddSnippetCommand = new RelayCommand<Snippet>(s => AddSnippet(s), s => s is not null);
             AddTokenCommand = new RelayCommand<string>(t => AddToken(t), t => !string.IsNullOrWhiteSpace(t));
             SaveCommand = new RelayCommand<object>(_ => Save(), _ => CanSave);
-            SaveAsCommand = new RelayCommand<object>(_ => SaveAs(), _ => CanSave);
+            SaveAsCommand = new RelayCommand<object>(async _ => await SaveAsAsync(), _ => CanSave);
             DeleteCommand = new RelayCommand<object>(_ => Delete(), _ => true);
             BeginRenameCommand = new RelayCommand<object>(_ => BeginRename(), _ => true);
             ConfirmRenameCommand = new RelayCommand<object>(_ => ConfirmRename(), _ => CanConfirmRename);
             CancelRenameCommand = new RelayCommand<object>(_ => CancelRename(), _ => true);
             ClearSequenceCommand = new RelayCommand<object>(_ => ClearSequence(), _ => true);
+
+            ConfirmSaveAsPromptCommand = new RelayCommand<object>(_ => ConfirmSaveAsPrompt(), _ => true);
+            CancelSaveAsPromptCommand = new RelayCommand<object>(_ => CancelSaveAsPrompt(), _ => true);
 
 
 
@@ -87,6 +95,10 @@ namespace CmdRunnerPro.ViewModels
         }
 
         #region Working copy properties
+
+        private const char MaskChar = '●';
+        private static string Mask(string s) => string.IsNullOrEmpty(s) ? string.Empty : new string(MaskChar, s.Length);
+
         private string _name;
         public string Name
         {
@@ -217,7 +229,7 @@ namespace CmdRunnerPro.ViewModels
                 ["wd"] = "WD",
             };
 
-        private Dictionary<string, string> GetTokenMap()
+        private Dictionary<string, string> GetTokenMap(bool maskPassword)
         {
             var map = new Dictionary<string, string>(_ci)
             {
@@ -228,14 +240,14 @@ namespace CmdRunnerPro.ViewModels
                 ["FIELD3"] = SelectedCom1 ?? "",
                 ["FIELD4"] = SelectedCom2 ?? "",
                 ["username"] = Username ?? "",
-                ["password"] = Password ?? "",
+                ["password"] = maskPassword ? Mask(Password ?? "") : (Password ?? ""),
                 ["opco"] = Opco ?? "",
                 ["program"] = Program ?? "",
-                // {wd} handled elsewhere at runtime; leave empty for preview
-                ["wd"] = ""
+                ["wd"] = "" // preview leaves {wd} empty by design
             };
             return map;
         }
+
 
         private void UpdateTokensInUse()
         {
@@ -270,7 +282,7 @@ namespace CmdRunnerPro.ViewModels
             "COM1" => SelectedCom1,
             "COM2" => SelectedCom2,
             "USERNAME" => Username,
-            "PASSWORD" => Password, // mask if desired
+            "PASSWORD" => Mask(Password ?? ""), // show masked in the token usage panel
             "OPCO" => Opco,
             "PROGRAM" => Program,
             "WD" => "",
@@ -281,7 +293,7 @@ namespace CmdRunnerPro.ViewModels
         {
             Preview = string.IsNullOrWhiteSpace(Template)
                 ? string.Empty
-                : ExpandTokens(Template, GetTokenMap());
+                : ExpandTokens(Template, GetTokenMap(maskPassword: true));
             UpdateTokensInUse();
         }
 
@@ -408,26 +420,26 @@ namespace CmdRunnerPro.ViewModels
 
             var basics = new SnippetCategory { Name = "Basics", IsExpanded = false };
             basics.Items.Add(new Snippet { Name = "Echo COMs", Description = "Echo resolved COM port tokens", Text = "echo COM1={comport1} COM2={comport2}" });
-            basics.Items.Add(new Snippet { Name = "CD to Working Dir", Description = "Change directory to the current Working Directory", Text = "cd {Q:wd}" });
-            basics.Items.Add(new Snippet { Name = "Run Program (help)", Description = "Run the selected program with --help", Text = "{Q:program} --help" });
+            //basics.Items.Add(new Snippet { Name = "CD to Working Dir", Description = "Change directory to the current Working Directory", Text = "cd {Q:wd}" });
+            //basics.Items.Add(new Snippet { Name = "Run Program (help)", Description = "Run the selected program with --help", Text = "{Q:program} --help" });
 
-            var files = new SnippetCategory { Name = "File Ops", IsExpanded = false };
-            files.Items.Add(new Snippet { Name = "Copy (quoted)", Description = "Copy example, quoting WD path", Text = "copy {Q:wd}\\source.txt {Q:wd}\\dest.txt" });
-            files.Items.Add(new Snippet { Name = "Make Dir", Description = "Create folder under working directory", Text = "mkdir {Q:wd}\\output" });
+            //var files = new SnippetCategory { Name = "File Ops", IsExpanded = false };
+            //files.Items.Add(new Snippet { Name = "Copy (quoted)", Description = "Copy example, quoting WD path", Text = "copy {Q:wd}\\source.txt {Q:wd}\\dest.txt" });
+            //files.Items.Add(new Snippet { Name = "Make Dir", Description = "Create folder under working directory", Text = "mkdir {Q:wd}\\output" });
 
-            var serial = new SnippetCategory { Name = "Serial/COM", IsExpanded = false };
-            serial.Items.Add(new Snippet { Name = "COM1 9600N81", Description = "Configure COM1 with common settings", Text = "mode {comport1}: baud=9600 parity=n data=8 stop=1" });
-            serial.Items.Add(new Snippet { Name = "COM2 115200N81", Description = "Configure COM2 with high‑speed settings", Text = "mode {comport2}: baud=115200 parity=n data=8 stop=1" });
+           // var serial = new SnippetCategory { Name = "Serial/COM", IsExpanded = false };
+            //serial.Items.Add(new Snippet { Name = "COM1 9600N81", Description = "Configure COM1 with common settings", Text = "mode {comport1}: baud=9600 parity=n data=8 stop=1" });
+            //serial.Items.Add(new Snippet { Name = "COM2 115200N81", Description = "Configure COM2 with high‑speed settings", Text = "mode {comport2}: baud=115200 parity=n data=8 stop=1" });
 
-            var diagnostics = new SnippetCategory { Name = "Diagnostics", IsExpanded = false };
-            diagnostics.Items.Add(new Snippet { Name = "Ping localhost", Description = "One ping to loopback", Text = "ping -n 1 127.0.0.1" });
+           // var diagnostics = new SnippetCategory { Name = "Diagnostics", IsExpanded = false };
+            //diagnostics.Items.Add(new Snippet { Name = "Ping localhost", Description = "One ping to loopback", Text = "ping -n 1 127.0.0.1" });
 
             QuickAddCategories.Clear();
             QuickAddCategories.Add(meterMate);
             QuickAddCategories.Add(basics);
-            QuickAddCategories.Add(files);
-            QuickAddCategories.Add(serial);
-            QuickAddCategories.Add(diagnostics);
+            //QuickAddCategories.Add(files);
+            //QuickAddCategories.Add(serial);
+            //QuickAddCategories.Add(diagnostics);
         }
 
         public Visibility MeterMateVisibility => Visibility.Visible;
@@ -459,6 +471,9 @@ namespace CmdRunnerPro.ViewModels
         public ICommand ConfirmRenameCommand { get; }
         public ICommand CancelRenameCommand { get; }
         public ICommand ClearSequenceCommand { get; }
+        public ICommand ConfirmSaveAsPromptCommand { get; }
+        public ICommand CancelSaveAsPromptCommand { get; }
+
 
 
         private static readonly StringComparer _nameComparer = StringComparer.OrdinalIgnoreCase;
@@ -486,9 +501,11 @@ namespace CmdRunnerPro.ViewModels
         {
             if (!CanSave) return;
 
+            // Keep the editor in sync with what the user typed.
             ApplyToOriginal();
 
-            CloseDialog(new TemplateEditorResult
+            // Notify host to persist; DO NOT close the editor
+            OperationRequested?.Invoke(new TemplateEditorResult
             {
                 Action = TemplateEditorResult.EditorAction.Saved,
                 Name = Name?.Trim() ?? "",
@@ -498,31 +515,43 @@ namespace CmdRunnerPro.ViewModels
         }
 
         // Save As: request caller to create a new template (we generate a unique name if needed)
-        private void SaveAs()
+
+        private async Task<string?> PromptForTemplateNameAsync(string suggestion)
+        {
+            var prompt = new CmdRunnerPro.Views.NamePrompt
+            {
+                Title = "Save Template As",
+                Prompt = "Template name",
+                Text = suggestion
+            };
+            var result = await DialogHost.Show(prompt, "RootDialog");
+            return result as string; // null on cancel
+        }
+
+        private async Task SaveAsAsync()
         {
             if (!CanSave) return;
 
-            // What the user currently typed in the editor’s Name field
+            var originalName = GetOriginalName() ?? string.Empty;
             var entered = SanitizeFileishName(Name);
-            var original = GetOriginalName() ?? string.Empty;
 
-            string targetName;
+            string suggestion = _nameComparer.Equals(entered, originalName)
+                ? MakeUniqueName($"{originalName} (Copy)")
+                : (_nameExists(entered) ? MakeUniqueName(entered) : entered);
 
-            if (_nameComparer.Equals(entered, original))
-            {
-                // User didn’t change the name; treat Save As as a copy operation
-                targetName = MakeUniqueName(entered);
-            }
-            else
-            {
-                // User changed the name; respect it (auto-unique only if collides)
-                targetName = _nameExists(entered) ? MakeUniqueName(entered) : entered;
-            }
+            // Inline child prompt (the one you added) – await the result
+            var raw = await OpenSaveAsPromptAsync(suggestion);
+            if (raw is null) return; // cancelled
 
-            DialogHost.Close("RootDialog", new TemplateEditorResult
+            var chosen = SanitizeFileishName(raw);
+            if (_nameExists(chosen))
+                chosen = MakeUniqueName(chosen);
+
+            // Tell host to create the new template; KEEP editor open
+            OperationRequested?.Invoke(new TemplateEditorResult
             {
                 Action = TemplateEditorResult.EditorAction.SavedAs,
-                Name = targetName,
+                Name = chosen,
                 TemplateText = Template ?? string.Empty
             });
         }
@@ -530,7 +559,7 @@ namespace CmdRunnerPro.ViewModels
         // Delete: ask caller to delete the original item
         private void Delete()
         {
-            CloseDialog(new TemplateEditorResult
+            OperationRequested?.Invoke(new TemplateEditorResult
             {
                 Action = TemplateEditorResult.EditorAction.Deleted,
                 Name = GetOriginalName() ?? Name ?? "",
@@ -538,6 +567,7 @@ namespace CmdRunnerPro.ViewModels
                 OriginalId = GetOriginalId()
             });
         }
+
         private static readonly char[] _invalidNameChars = Path.GetInvalidFileNameChars();
 
         private static string SanitizeFileishName(string input)
@@ -652,6 +682,48 @@ namespace CmdRunnerPro.ViewModels
             UpdatePreview();
             ValidateProperty(nameof(Template), Template);
             OnPropertyChanged(nameof(CanSave));
+        }
+
+        // --- Save As prompt state ---
+        private TaskCompletionSource<string?> _saveAsTcs;
+
+        private bool _isSaveAsPromptOpen;
+        public bool IsSaveAsPromptOpen
+        {
+            get => _isSaveAsPromptOpen;
+            set => Set(ref _isSaveAsPromptOpen, value);
+        }
+
+        private string _saveAsProposedName = "";
+        public string SaveAsProposedName
+        {
+            get => _saveAsProposedName;
+            set => Set(ref _saveAsProposedName, value);
+        }
+        private Task<string?> OpenSaveAsPromptAsync(string suggestion)
+        {
+            _saveAsTcs = new TaskCompletionSource<string?>();
+            SaveAsProposedName = suggestion ?? "";
+            IsSaveAsPromptOpen = true;
+            return _saveAsTcs.Task;
+        }
+
+        private void ConfirmSaveAsPrompt()
+        {
+            var input = SaveAsProposedName?.Trim() ?? "";
+            if (string.IsNullOrWhiteSpace(input))
+            {
+                // Optional: add validation feedback (Snackbar, error text) and keep dialog open
+                return;
+            }
+            IsSaveAsPromptOpen = false;
+            _saveAsTcs?.TrySetResult(input);
+        }
+
+        private void CancelSaveAsPrompt()
+        {
+            IsSaveAsPromptOpen = false;
+            _saveAsTcs?.TrySetResult(null);
         }
 
     }

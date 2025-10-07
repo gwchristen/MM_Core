@@ -1,7 +1,8 @@
-using System.Windows;
 using CmdRunnerPro.ViewModels;
 using System.Collections.Specialized;
 using System.Windows;
+using System.Windows;
+using System.Windows.Input;
 
 namespace CmdRunnerPro.Views
 {
@@ -36,5 +37,25 @@ namespace CmdRunnerPro.Views
 
         }
 
+        private void RevealPassword_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            // show plaintext overlay while the mouse is held
+            PasswordRevealTextBox.Visibility = Visibility.Visible;
+            PasswordBox.Visibility = Visibility.Collapsed;
+        }
+
+        private void RevealPassword_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            // re-mask when the mouse is released
+            PasswordRevealTextBox.Visibility = Visibility.Collapsed;
+            PasswordBox.Visibility = Visibility.Visible;
+        }
+
+        private void RevealPassword_MouseLeave(object sender, MouseEventArgs e)
+        {
+            // safety: also re-mask if the cursor leaves the button
+            PasswordRevealTextBox.Visibility = Visibility.Collapsed;
+            PasswordBox.Visibility = Visibility.Visible;
+        }
     }
 }

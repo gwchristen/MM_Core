@@ -69,24 +69,51 @@
                         <TextBlock Text="Inputs" FontWeight="SemiBold" Margin="0,0,0,4"/>
                         <StackPanel Orientation="Vertical" Margin="0,0,0,12">
                             <ComboBox Style="{StaticResource MaterialDesignOutlinedComboBox}"
-                          ItemsSource="{Binding ComPortOptions}"
-                          SelectedItem="{Binding SelectedCom1}" />
+                                      ItemsSource="{Binding ComPortOptions}"
+                                      SelectedItem="{Binding SelectedCom1}" />
 
                             <ComboBox Style="{StaticResource MaterialDesignOutlinedComboBox}"
-                          ItemsSource="{Binding ComPortOptions}"
-                          SelectedItem="{Binding SelectedCom2}"
-                          Margin="0,8,0,0" />
+                                      ItemsSource="{Binding ComPortOptions}"
+                                      SelectedItem="{Binding SelectedCom2}"
+                                      Margin="0,8,0,0" />
 
                             <TextBox Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                         materialDesign:HintAssist.Hint="Username"
-                         Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
-                         Margin="0,8,0,0"/>
+                                     materialDesign:HintAssist.Hint="Username"
+                                     Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="0,8,0,0"/>
 
-                            <PasswordBox Style="{StaticResource MaterialDesignOutlinedPasswordBox}"
-                             materialDesign:HintAssist.Hint="Password"
-                             utils:PasswordBoxHelper.BindPassword="True"
-                             utils:PasswordBoxHelper.BoundPassword="{Binding Password, Mode=TwoWay}"
-                             Margin="0,8,0,0"/>
+                            <Grid Margin="0,8,0,0">
+                                <!-- The masked input you already use -->
+                                <PasswordBox x:Name="PasswordBox"
+                                             Style="{StaticResource MaterialDesignOutlinedPasswordBox}"
+                                             materialDesign:HintAssist.Hint="Password"
+                                             utils:PasswordBoxHelper.BindPassword="True"
+                                             utils:PasswordBoxHelper.BoundPassword="{Binding Password, Mode=TwoWay}" />
+
+                                <!-- Plaintext overlay shown only while the eye is pressed -->
+                                <TextBox x:Name="PasswordRevealTextBox"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         materialDesign:HintAssist.Hint="Password"
+                                         Text="{Binding Password, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         IsReadOnly="True"
+                                         Visibility="Collapsed"
+                                         Padding="12,10,40,10" />
+
+                                <!-- Press-and-hold reveal button -->
+                                <Button Style="{StaticResource MaterialDesignIconButton}"
+                                        Width="28" Height="28"
+                                        HorizontalAlignment="Right"
+                                        VerticalAlignment="Center"
+                                        Margin="0,0,6,0"
+                                        ToolTip="Press and hold to reveal"
+                                        IsTabStop="False"
+                                        Focusable="False"
+                                        PreviewMouseLeftButtonDown="RevealPassword_PreviewMouseLeftButtonDown"
+                                        PreviewMouseLeftButtonUp="RevealPassword_PreviewMouseLeftButtonUp"
+                                        MouseLeave="RevealPassword_MouseLeave">
+                                    <materialDesign:PackIcon Kind="Eye" Width="18" Height="18"/>
+                                </Button>
+                            </Grid>
 
                             <TextBox Style="{StaticResource MaterialDesignOutlinedTextBox}"
                          materialDesign:HintAssist.Hint="Opco"
@@ -181,10 +208,9 @@
                           Width="240" />
 
                             <Button Content="Edit"
-        Command="{Binding DataContext.EditTemplateCommand,
-                          RelativeSource={RelativeSource AncestorType=Window}}"
-        Style="{StaticResource MaterialDesignOutlinedButton}"
-        diag:PresentationTraceSources.TraceLevel="High"/>
+                                    Command="{Binding DataContext.EditTemplateCommand,RelativeSource={RelativeSource AncestorType=Window}}"
+                                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                                    diag:PresentationTraceSources.TraceLevel="High" Height="45" Margin="12,0,6,0" Width="70"/>
 
                         </StackPanel>
                     </DockPanel>
