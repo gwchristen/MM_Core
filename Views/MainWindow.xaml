@@ -238,7 +238,7 @@
                                Text="Output"
                                FontSize="16" FontWeight="SemiBold"
                                Margin="0,12,0,8" />
-
+                   
                     <!-- Output body -->
                     <Border Grid.Row="3"
                             Padding="8" CornerRadius="4"
@@ -252,21 +252,24 @@
                                  Background="Transparent"
                                  BorderThickness="0"/>
                     </Border>
-                    
+
                     <!-- Bottom buttons (kept as-is) -->
-                        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0">
-                            <Button Content="Run"
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0">
+                        <Button Content="Run"
                                     Command="{Binding RunCommand}"
                                     Style="{StaticResource MaterialDesignRaisedButton}"/>
-                            <Button Content="Stop"
+                        <Button Content="Stop"
                                     Command="{Binding StopCommand}"
                                     Style="{StaticResource MaterialDesignOutlinedButton}"
                                     Margin="8,0,0,0"/>
-                            <Button Content="Clear"
+                        <Button Content="Clear"
                                     Command="{Binding ClearOutputCommand}"
                                     Style="{StaticResource MaterialDesignOutlinedButton}"
                                     Margin="8,0,0,0"/>
-                        </StackPanel>
+                        <CheckBox Content="Detailed Output (commands + exit codes)"
+                                      IsChecked="{Binding ShowDetailedOutput}"
+                                      VerticalAlignment="Center"/>
+                    </StackPanel>
                 </Grid>
             </Grid>
         </DockPanel>

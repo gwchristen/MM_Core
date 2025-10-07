@@ -3,6 +3,7 @@ using System.Collections.Specialized;
 using System.Windows;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Threading;
 
 namespace CmdRunnerPro.Views
 {
@@ -26,11 +27,18 @@ namespace CmdRunnerPro.Views
             this.DataContextChanged += (_, __) => HookVm();
         }
 
+
         private void OutputLines_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
         {
-            if (e.Action is NotifyCollectionChangedAction.Add && OutputList.Items.Count > 0)
-                OutputList.ScrollIntoView(OutputList.Items[^1]);
+            if (e.Action == NotifyCollectionChangedAction.Add && OutputList.Items.Count > 0)
+            {
+                Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    OutputList.ScrollIntoView(OutputList.Items[^1]);
+                }), DispatcherPriority.Background);
+            }
         }
+
 
         private void ComboBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {

@@ -1,5 +1,6 @@
 ﻿// ViewModels/MainViewModel.cs
 using CmdRunnerPro.Models;           // Template, InputPreset
+using CmdRunnerPro.Services;
 using CmdRunnerPro.Views;            // TemplateEditor (UserControl)
 using MaterialDesignThemes.Wpf;      // DialogHost, BaseTheme, PaletteHelper
 using System;
@@ -51,8 +52,8 @@ namespace CmdRunnerPro.ViewModels
             NewTemplateCommand = new RelayCommand(async () => await NewTemplateAsync());
             CloneTemplateCommand = new RelayCommand(async () => await CloneTemplateAsync(), () => SelectedTemplate != null);
             DeleteTemplateCommand = new RelayCommand(async () => await DeleteTemplateAsync(), () => SelectedTemplate != null);
-            OpenTemplateEditorCommand = new RelayCommand(async () => await EditOrCreateTemplateAsync() );
-            EditTemplateCommand = new RelayCommand(async () => await EditOrCreateTemplateAsync() );                                                         
+            OpenTemplateEditorCommand = new RelayCommand(async () => await EditOrCreateTemplateAsync());
+            EditTemplateCommand = new RelayCommand(async () => await EditOrCreateTemplateAsync());
 
 
             SavePresetCommand = new RelayCommand(SavePreset, () => true);
@@ -97,6 +98,14 @@ namespace CmdRunnerPro.ViewModels
             else _uiDispatcher?.Invoke(action);
         }
 
+
+        private string _currentCommand;
+        public string CurrentCommand
+        {
+            get => _currentCommand;
+            set => Set(ref _currentCommand, value);
+        }
+
         #region Collections & Selection
         private ObservableCollection<Template> _templates = new();
         public ObservableCollection<Template> Templates
@@ -138,9 +147,19 @@ namespace CmdRunnerPro.ViewModels
                 }
             }
         }
+
+        private bool _showDetailedOutput = false; // default to detailed
+        public bool ShowDetailedOutput
+        {
+            get => _showDetailedOutput;
+            set => Set(ref _showDetailedOutput, value);
+            
+        }
+
+
         #endregion
 
-        #region Inputs / Working Directory
+            #region Inputs / Working Directory
         private string _selectedCom1;
         private string _selectedCom2;
         private string _username;
@@ -225,7 +244,7 @@ namespace CmdRunnerPro.ViewModels
                     ? $"[{DateTime.Now:HH:mm:ss}] {text}"
                     : text;
 
-                OutputLines.Add(line);
+                OutputLines.Add(line); // ✅ FIXED: no nested OnUI
                 OutputLog = string.IsNullOrEmpty(OutputLog)
                     ? line
                     : $"{OutputLog}{Environment.NewLine}{line}";
@@ -290,6 +309,68 @@ namespace CmdRunnerPro.ViewModels
         }
         #endregion
 
+        // Build (Command, Display) pairs per line from the template
+        /// <summary>
+        /// Turns a template into a sequence of items: the command to run, a verbose display (full command),
+        /// and a friendly display (description = masked command). Skips blanks and comment lines.
+        /// Supports "Description = command" syntax per line.
+        /// </summary>
+        private IEnumerable<(string Command, string DisplayVerbose, string DisplayFriendly)>
+            BuildCommandQueueFromTemplate(Template template)
+        {
+            var text = template?.TemplateText ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(text))
+                yield break;
+
+            // Expanders: one for actual run (unmasked), one for display (masked password)
+            var expandRun = BuildTokenResolver(maskPassword: false);
+            var expandShown = BuildTokenResolver(maskPassword: true);
+
+            var lines = text.Replace("\r", "").Split('\n', StringSplitOptions.None);
+            foreach (var raw in lines)
+            {
+                var line = raw?.Trim();
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
+
+                // Skip comments
+                var head = line.TrimStart();
+                if (head.StartsWith("#") ||
+                    head.StartsWith("//", StringComparison.Ordinal) ||
+                    head.StartsWith("::", StringComparison.Ordinal) ||
+                    head.StartsWith("REM ", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                string description = null;
+                string cmdText = line;
+
+                // If author provided "Description = command"
+                int eq = line.IndexOf('=');
+                if (eq > 0)
+                {
+                    description = line.Substring(0, eq).Trim();
+                    cmdText = line.Substring(eq + 1).Trim();
+                }
+
+                // Build both flavors
+
+                if (TrySplitFriendly(line, out var desc, out var cmd))
+                {
+                    description = desc;
+                    cmdText = cmd;
+                }
+
+                var expandedForRun = ExpandTokens(cmdText, BuildTokenResolver(maskPassword: false));
+                var expandedForDisplay = ExpandTokens(cmdText, BuildTokenResolver(maskPassword: true));
+
+                string displayVerbose = expandedForRun;
+                string displayFriendly = displayFriendly = description ?? expandedForDisplay;
+
+                yield return (expandedForRun, displayVerbose, displayFriendly);
+
+            }
+        }
+
         #region Run / Stop
 
         private async Task RunSelectedAsync()
@@ -302,53 +383,38 @@ namespace CmdRunnerPro.ViewModels
             {
                 AppendOutput($"--- Running template: {SelectedTemplate.Name} ---");
 
-                var command = ExpandTokens(SelectedTemplate.TemplateText, BuildTokenResolver(maskPassword: false));
-                var wd = string.IsNullOrWhiteSpace(WorkingDirectory) ? Environment.CurrentDirectory : WorkingDirectory;
-
-                var psi = new ProcessStartInfo
+                // Build per-line queue (command + two display modes)
+                var commandItems = BuildCommandQueueFromTemplate(SelectedTemplate).ToList();
+                if (commandItems.Count == 0)
                 {
-                    FileName = "cmd.exe",
-                    Arguments = "/C " + command,
-                    WorkingDirectory = wd,
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true
-                };
-
-
-                _currentProcess = new Process { StartInfo = psi, EnableRaisingEvents = true };
-
-                _currentProcess.OutputDataReceived += (_, e) =>
-                {
-                    if (e.Data != null) AppendOutput(e.Data); // this already marshals
-                };
-
-                _currentProcess.ErrorDataReceived += (_, e) =>
-                {
-                    if (e.Data != null) AppendOutput("[ERR] " + e.Data); // marshaled
-                };
-
-                _currentProcess.Exited += (_, __) =>
-                {
-                    // Exited is raised on a non-UI thread; ensure both the output and the command requery are on UI
-                    OnUI(() =>
-                    {
-                        AppendOutput($"--- Process exited (Code: {_currentProcess.ExitCode}) ---");
-                        RaiseCommandCanExecuteChanged();
-                    });
-                };
-
-
-                bool started = _currentProcess.Start();
-                RaiseCommandCanExecuteChanged();
-
-                if (started)
-                {
-                    _currentProcess.BeginOutputReadLine();
-                    _currentProcess.BeginErrorReadLine();
-                    await _currentProcess.WaitForExitAsync(_runCts.Token);
+                    AppendOutput("[warn] Template contains no runnable commands.");
+                    return;
                 }
+
+                AppendOutput($"[info] {commandItems.Count} command(s) to run…");
+
+                var wd = string.IsNullOrWhiteSpace(WorkingDirectory)
+                    ? Environment.CurrentDirectory
+                    : WorkingDirectory;
+
+                var runner = new CommandRunner();
+
+                bool success = await runner.RunQueueAsync(
+                    commandItems,
+                    wd,
+                    stopOnError: false,
+                    showDetailed: ShowDetailedOutput,               // 👈 pass the toggle
+                    new Progress<CommandOutputWithState>(report =>
+                    {
+                        CurrentCommand = report.CurrentCommand;
+                        AppendOutput(report.Output.Line);
+                    }),
+                    _runCts.Token
+                );
+
+                AppendOutput(success
+                    ? "--- All commands completed ---"
+                    : "--- Execution stopped due to error ---");
             }
             catch (OperationCanceledException)
             {
@@ -362,11 +428,10 @@ namespace CmdRunnerPro.ViewModels
             {
                 _runCts?.Dispose();
                 _runCts = null;
-                _currentProcess?.Dispose();
-                _currentProcess = null;
                 RaiseCommandCanExecuteChanged();
             }
         }
+
 
         private void Stop()
         {
@@ -1202,6 +1267,36 @@ namespace CmdRunnerPro.ViewModels
             string candidate;
             do { candidate = $"{baseName} ({i++})"; } while (existing.Contains(candidate));
             return candidate;
+        }
+        public class CommandOutputWithState
+        {
+            public CommandOutput Output { get; set; }
+            public string CurrentCommand { get; set; } = "";
+        }
+
+        // Put inside MainViewModel
+        private static bool TrySplitFriendly(string line, out string description, out string command)
+        {
+            description = null;
+            command = line;
+
+            if (string.IsNullOrWhiteSpace(line)) return false;
+
+            bool inQuotes = false;
+            for (int i = 0; i < line.Length - 2; i++)
+            {
+                char c = line[i];
+                if (c == '"') inQuotes = !inQuotes;
+
+                // Look for " = " (space, equals, space) when not inside quotes
+                if (!inQuotes && line[i] == ' ' && line[i + 1] == '=' && line[i + 2] == ' ')
+                {
+                    description = line.Substring(0, i).Trim();
+                    command = line.Substring(i + 3).Trim();
+                    return !string.IsNullOrEmpty(description) && !string.IsNullOrEmpty(command);
+                }
+            }
+            return false;
         }
     }
 }

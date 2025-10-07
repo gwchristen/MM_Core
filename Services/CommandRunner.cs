@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using static CmdRunnerPro.ViewModels.MainViewModel;
+using CmdRunnerPro.ViewModels;
 
 namespace CmdRunnerPro.Services
 {
@@ -70,26 +72,56 @@ namespace CmdRunnerPro.Services
             return exitCode;
         }
 
+
         public async Task<bool> RunQueueAsync(
-            IEnumerable<(string Command, string Display)> queueItems,
+            IEnumerable<(string Command, string DisplayVerbose, string DisplayFriendly)> queueItems,
             string workingDirectory,
             bool stopOnError,
-            IProgress<CommandOutput> progress,
+            bool showDetailed, // new
+            IProgress<MainViewModel.CommandOutputWithState> progress,
             CancellationToken ct)
         {
-            foreach (var (command, display) in queueItems)
+            foreach (var item in queueItems)
             {
                 if (ct.IsCancellationRequested) return false;
 
-                progress.Report(new CommandOutput { Line = "> " + display });
+                // Pick display mode
+                var display = showDetailed ? item.DisplayVerbose : item.DisplayFriendly;
+
+                // Show the pre-exec line ("> ...")
+                progress.Report(new MainViewModel.CommandOutputWithState
+                {
+                    Output = new CommandOutput { IsError = false, Line = "> " + display },
+                    CurrentCommand = display
+                });
                 LoggingService.Log("> " + display);
 
-                var code = await RunSingleAsync(command, workingDirectory, progress, ct);
-                progress.Report(new CommandOutput { Line = "[exit " + code + "]" });
+                // Run the command
+                var code = await RunSingleAsync(item.Command, workingDirectory,
+                    new Progress<CommandOutput>(output =>
+                    {
+                        progress.Report(new MainViewModel.CommandOutputWithState
+                        {
+                            Output = output,
+                            CurrentCommand = display
+                        });
+                    }), ct);
+
+                // Exit code line: only when detailed output is ON
+                if (showDetailed)
+                {
+                    progress.Report(new MainViewModel.CommandOutputWithState
+                    {
+                        Output = new CommandOutput { IsError = false, Line = "[exit " + code + "]" },
+                        CurrentCommand = display
+                    });
+                    LoggingService.Log("[exit " + code + "]");
+                }
 
                 if (code != 0 && stopOnError)
                     return false;
             }
+
             return true;
         }
     }
