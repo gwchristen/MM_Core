@@ -3,11 +3,11 @@ using System;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace CmdRunnerPro.Services
+namespace MMCore.Services
 {
     public static class EncryptionService
     {
-        private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("CmdRunnerPro|v1|entropy");
+        private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("MMCore|v1|entropy");
 
         public static string Encrypt(string plainText)
         {

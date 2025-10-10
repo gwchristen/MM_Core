@@ -9,15 +9,15 @@ A WPF utility to queue and run Windows CMD commands with live output, logging, C
 
 ## Build
 ```
-cd CmdRunnerPro
+cd MMCore
 # Option 1: CLI
 dotnet build
 # Option 2: Visual Studio
-#   - Open CmdRunnerPro.csproj and press F5
+#   - Open MMCore.csproj and press F5
 ```
 
 ## Run
-First run will create `%AppData%/CmdRunnerPro/settings.json` and a `Logs` folder.
+First run will create `%AppData%/MMCore/settings.json` and a `Logs` folder.
 
 ## Features
 - Execute CMD commands (runs via `cmd.exe /C`) with selectable Working Directory

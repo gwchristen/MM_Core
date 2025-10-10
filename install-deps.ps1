@@ -4,7 +4,7 @@
   Optionally installs Visual Studio VSIX extensions.
 
 .PARAMETER Project
-  Path to your .csproj (default: CmdRunnerPro.csproj)
+  Path to your .csproj (default: MMCore.csproj)
 
 .PARAMETER Proxy
   Optional HTTP/HTTPS proxy (e.g. http://user:pass@host:port). Sets HTTP_PROXY/HTTPS_PROXY for the session.
@@ -17,16 +17,16 @@
   Retry attempts for restore/build (default: 2)
 
 .EXAMPLE
-  powershell -ExecutionPolicy Bypass -File .\install-deps.ps1 -Project .\CmdRunnerPro.csproj -Verbose
+  powershell -ExecutionPolicy Bypass -File .\install-deps.ps1 -Project .\MMCore.csproj -Verbose
 
 .EXAMPLE (behind proxy)
-  .\install-deps.ps1 -Project .\CmdRunnerPro.csproj -Proxy 'http://proxy.mycorp.local:8080' -Verbose
+  .\install-deps.ps1 -Project .\MMCore.csproj -Proxy 'http://proxy.mycorp.local:8080' -Verbose
 
 #>
 
 [CmdletBinding()]
 param(
-  [string]$Project = ".\CmdRunnerPro.csproj",
+  [string]$Project = ".\MMCore.csproj",
   [string]$Proxy,
   [string[]]$VsixPaths,
   [int]$Retries = 2

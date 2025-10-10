@@ -1,11 +1,11 @@
-using CmdRunnerPro.ViewModels;
+using MMCore.ViewModels;
 using System.Collections.Specialized;
 using System.Windows;
-using System.Windows;
+using System.Windows.Controls;  // Add this for ListBox
 using System.Windows.Input;
 using System.Windows.Threading;
 
-namespace CmdRunnerPro.Views
+namespace MMCore.Views
 {
     public partial class MainWindow : Window
     {
@@ -27,18 +27,21 @@ namespace CmdRunnerPro.Views
             this.DataContextChanged += (_, __) => HookVm();
         }
 
-
         private void OutputLines_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
         {
-            if (e.Action == NotifyCollectionChangedAction.Add && OutputList.Items.Count > 0)
+            if (e.Action == NotifyCollectionChangedAction.Add)
             {
-                Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+                // Find the active OutputList (Advanced tab) or OutputListSimple (Simple tab)
+                var outputList = this.FindName("OutputList") as ListBox ?? this.FindName("OutputListSimple") as ListBox;
+                if (outputList != null && outputList.Items.Count > 0)
                 {
-                    OutputList.ScrollIntoView(OutputList.Items[^1]);
-                }), DispatcherPriority.Background);
+                    Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        outputList.ScrollIntoView(outputList.Items[^1]);
+                    }), DispatcherPriority.Background);
+                }
             }
         }
-
 
         private void ComboBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
@@ -64,6 +67,24 @@ namespace CmdRunnerPro.Views
             // safety: also re-mask if the cursor leaves the button
             PasswordRevealTextBox.Visibility = Visibility.Collapsed;
             PasswordBox.Visibility = Visibility.Visible;
+        }
+
+        private void RevealPasswordSimple_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            PasswordRevealTextBoxSimple.Visibility = Visibility.Visible;
+            PasswordBoxSimple.Visibility = Visibility.Collapsed;
+        }
+
+        private void RevealPasswordSimple_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            PasswordRevealTextBoxSimple.Visibility = Visibility.Collapsed;
+            PasswordBoxSimple.Visibility = Visibility.Visible;
+        }
+
+        private void RevealPasswordSimple_MouseLeave(object sender, MouseEventArgs e)
+        {
+            PasswordRevealTextBoxSimple.Visibility = Visibility.Collapsed;
+            PasswordBoxSimple.Visibility = Visibility.Visible;
         }
     }
 }

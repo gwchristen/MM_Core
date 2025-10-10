@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Serialization;
 
-namespace CmdRunnerPro.Models
+namespace MMCore.Models
 {
     public class InputPreset
     {
@@ -68,7 +68,7 @@ namespace CmdRunnerPro.Models
         // ===== DPAPI helpers =====
         // NOTE: CurrentUser scope means only this Windows user profile can decrypt it.
         // If you want the same across all users of the machine, switch to LocalMachine.
-        private static readonly byte[] _entropy = Encoding.UTF8.GetBytes("CmdRunnerPro_DPAPI_v1");
+        private static readonly byte[] _entropy = Encoding.UTF8.GetBytes("MMCore_DPAPI_v1");
 
         private static string? Encrypt(string? plain)
         {

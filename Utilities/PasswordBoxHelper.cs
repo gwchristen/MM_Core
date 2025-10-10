@@ -1,7 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 
-namespace CmdRunnerPro.Utilities
+namespace MMCore.Utilities
 {
     // Simplified binder for PasswordBox <-> string. For production, prefer SecureString.
     public static class PasswordBoxHelper

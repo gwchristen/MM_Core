@@ -1,9 +1,9 @@
 ﻿using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using CmdRunnerPro.Models;
+using MMCore.Models;
 
-namespace CmdRunnerPro.Services
+namespace MMCore.Services
 {
     public interface ITemplateRepository
     {

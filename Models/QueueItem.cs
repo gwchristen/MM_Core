@@ -1,4 +1,4 @@
-namespace CmdRunnerPro.Models
+namespace MMCore.Models
 {
     public class QueueItem
     {

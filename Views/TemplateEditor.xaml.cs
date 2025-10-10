@@ -1,9 +1,9 @@
 using System.Windows.Controls;
 using System.Windows;
-using CmdRunnerPro.ViewModels;
+using MMCore.ViewModels;
 using System.Windows.Input;
 
-namespace CmdRunnerPro.Views
+namespace MMCore.Views
 {
     public partial class TemplateEditor : UserControl
     {

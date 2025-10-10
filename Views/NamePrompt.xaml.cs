@@ -1,7 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 
-namespace CmdRunnerPro.Views
+namespace MMCore.Views
 {
     public partial class NamePrompt : UserControl
     {

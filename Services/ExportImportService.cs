@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using CmdRunnerPro.Models;
+using MMCore.Models;
 
-namespace CmdRunnerPro.Services
+namespace MMCore.Services
 {
     public static class ExportImportService
     {

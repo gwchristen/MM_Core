@@ -5,9 +5,9 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
 using Microsoft.Win32.SafeHandles;
-using CmdRunnerPro.Models;
+using MMCore.Models;
 
-namespace CmdRunnerPro.Services
+namespace MMCore.Services
 {
     public static class ComPortService
     {

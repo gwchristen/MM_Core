@@ -1,7 +1,7 @@
 
 using System.Collections.Generic;
 
-namespace CmdRunnerPro.Services
+namespace MMCore.Services
 {
     public static class SecurityService
     {

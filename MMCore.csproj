@@ -7,8 +7,8 @@
     <UseWindowsForms>false</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AssemblyName>CmdRunnerPro</AssemblyName>
-    <RootNamespace>CmdRunnerPro</RootNamespace>
+    <AssemblyName>MMCore</AssemblyName>
+    <RootNamespace>MMCore</RootNamespace>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
 

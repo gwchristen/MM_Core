@@ -2,7 +2,7 @@
 using System;
 using System.Windows.Input;
 
-namespace CmdRunnerPro.ViewModels
+namespace MMCore.Utilities
 {
     /// <summary>
     /// Simple non-generic RelayCommand for parameterless execute/canExecute.

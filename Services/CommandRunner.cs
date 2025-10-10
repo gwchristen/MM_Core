@@ -4,10 +4,10 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using static CmdRunnerPro.ViewModels.MainViewModel;
-using CmdRunnerPro.ViewModels;
+using static MMCore.ViewModels.MainViewModel;
+using MMCore.ViewModels;
 
-namespace CmdRunnerPro.Services
+namespace MMCore.Services
 {
     public class CommandOutput
     {

@@ -15,8 +15,9 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.IO; // for Path.GetInvalidFileNameChars
 using System.Threading.Tasks;
+using MMCore.Utilities;
 
-namespace CmdRunnerPro.ViewModels
+namespace MMCore.ViewModels
 {
     /// <summary>
     /// The result object sent back to the opener via DialogHost.Close("RootDialog", result)
@@ -518,7 +519,7 @@ namespace CmdRunnerPro.ViewModels
 
         private async Task<string?> PromptForTemplateNameAsync(string suggestion)
         {
-            var prompt = new CmdRunnerPro.Views.NamePrompt
+            var prompt = new MMCore.Views.NamePrompt
             {
                 Title = "Save Template As",
                 Prompt = "Template name",

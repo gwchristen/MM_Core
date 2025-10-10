@@ -5,7 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 
-namespace CmdRunnerPro.Services
+namespace MMCore.Services
 {
     public static class MeterMateService
     {

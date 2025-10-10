@@ -1,10 +1,10 @@
 
-using CmdRunnerPro.Views;
+using MMCore.Views;
 using System;
 using System.Threading.Tasks;
 using System.Windows;
 
-namespace CmdRunnerPro
+namespace MMCore
 {
     public partial class App : Application
     {

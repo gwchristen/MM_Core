@@ -9,7 +9,7 @@ using System.Text.Json.Serialization;
 // If you use Newtonsoft.Json instead, comment the line above and
 // add: using Newtonsoft.Json;
 
-namespace CmdRunnerPro.Models
+namespace MMCore.Models
 {
     public class Template : INotifyPropertyChanged
     {

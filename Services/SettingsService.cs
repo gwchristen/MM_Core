@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using CmdRunnerPro.Models;
+using MMCore.Models;
 
-namespace CmdRunnerPro.Services
+namespace MMCore.Services
 {
     public static class SettingsService
     {
@@ -17,7 +17,7 @@ namespace CmdRunnerPro.Services
         };
 
         private static readonly string AppDir =
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CmdRunnerPro");
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MMCore");
 
         private static readonly string SettingsPath = Path.Combine(AppDir, "user-settings.json");
         private static readonly string TemplatesPath = Path.Combine(AppDir, "templates.json");

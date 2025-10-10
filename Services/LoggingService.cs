@@ -2,7 +2,7 @@
 using System;
 using System.IO;
 
-namespace CmdRunnerPro.Services
+namespace MMCore.Services
 {
     public static class LoggingService
     {

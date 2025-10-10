@@ -1,12 +1,16 @@
 ﻿// ViewModels/MainViewModel.cs
-using CmdRunnerPro.Models;           // Template, InputPreset
-using CmdRunnerPro.Services;
-using CmdRunnerPro.Views;            // TemplateEditor (UserControl)
+using MMCore.Models;           // Template, InputPreset
+using MMCore.Services;
+using MMCore.Utilities;
+using MMCore.Views;            // TemplateEditor (UserControl)
 using MaterialDesignThemes.Wpf;      // DialogHost, BaseTheme, PaletteHelper
+using Ookii.Dialogs.Wpf;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.ComponentModel.Design;
+using System.Data.Common;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Ports;
@@ -22,7 +26,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using WinForms = System.Windows.Forms;
 
-namespace CmdRunnerPro.ViewModels
+namespace MMCore.ViewModels
 {
     public class MainViewModel : INotifyPropertyChanged
     {
@@ -34,13 +38,22 @@ namespace CmdRunnerPro.ViewModels
         // App settings (theme + timestamps)
         private readonly string _configDir;
         private readonly string _themeSettingsPath;
+
+        // Simple tab fields
+        private string _selectedCom1Left = "";
+        private string _selectedCom1Center = "";
+        private string _selectedCom2Center = "";
+        private string _selectedCom2Right = "";
+        private string _programLeft = "";
+        private string _programCenter = "";
+        private string _programRight = "";
         #endregion
 
         #region Ctor
         public MainViewModel()
         {
             // Resolve settings paths
-            _configDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CmdRunnerPro");
+            _configDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MMCore");
             _themeSettingsPath = Path.Combine(_configDir, "theme.json");
 
             // Commands
@@ -55,16 +68,17 @@ namespace CmdRunnerPro.ViewModels
             OpenTemplateEditorCommand = new RelayCommand(async () => await EditOrCreateTemplateAsync());
             EditTemplateCommand = new RelayCommand(async () => await EditOrCreateTemplateAsync());
 
-
             SavePresetCommand = new RelayCommand(SavePreset, () => true);
-            //SavePresetAsCommand = new RelayCommand(SavePresetAs, () => true);
             DeletePresetCommand = new RelayCommand(DeletePreset, () => SelectedPreset != null);
-
             SavePresetAsCommand = new RelayCommand(async () => await SavePresetAsAsync(), () => true);
             SavePresetCommand = new RelayCommand(SavePreset, () => true);
 
             // View toggle
             ToggleViewModeCommand = new RelayCommand(() => IsAdvancedMode = !IsAdvancedMode);
+
+            ClearOutputCommand = new RelayCommand(ClearOutput);
+            ClearCommand = new RelayCommand(ClearPreview);
+            ResetCommand = new RelayCommand<string>(ExecuteReset);
 
             // Initialize data
             RefreshPorts();
@@ -86,7 +100,6 @@ namespace CmdRunnerPro.ViewModels
             // Initial preview
             UpdateTemplatePreview();
 
-            // ... your existing ctor code ...
             _uiDispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
             // Initial preview
             UpdateTemplatePreview();
@@ -98,14 +111,6 @@ namespace CmdRunnerPro.ViewModels
             if (action == null) return;
             if (_uiDispatcher?.CheckAccess() == true) action();
             else _uiDispatcher?.Invoke(action);
-        }
-
-
-        private string _currentCommand;
-        public string CurrentCommand
-        {
-            get => _currentCommand;
-            set => Set(ref _currentCommand, value);
         }
 
         #region Collections & Selection
@@ -155,13 +160,372 @@ namespace CmdRunnerPro.ViewModels
         {
             get => _showDetailedOutput;
             set => Set(ref _showDetailedOutput, value);
-            
         }
 
+        private string _currentCommand;
+        public string CurrentCommand
+        {
+            get => _currentCommand;
+            set => Set(ref _currentCommand, value);
+        }
 
         #endregion
 
-            #region Inputs / Working Directory
+        #region Simple Tab Properties
+        public string SelectedCom1Left
+        {
+            get => _selectedCom1Left;
+            set
+            {
+                if (_selectedCom1Left != value)
+                {
+                    _selectedCom1Left = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public string SelectedCom1Center
+        {
+            get => _selectedCom1Center;
+            set
+            {
+                if (_selectedCom1Center != value)
+                {
+                    _selectedCom1Center = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public string SelectedCom2Center
+        {
+            get => _selectedCom2Center;
+            set
+            {
+                if (_selectedCom2Center != value)
+                {
+                    _selectedCom2Center = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public string SelectedCom2Right
+        {
+            get => _selectedCom2Right;
+            set
+            {
+                if (_selectedCom2Right != value)
+                {
+                    _selectedCom2Right = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public string ProgramLeft
+        {
+            get => _programLeft;
+            set
+            {
+                if (_programLeft != value)
+                {
+                    _programLeft = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public string ProgramCenter
+        {
+            get => _programCenter;
+            set
+            {
+                if (_programCenter != value)
+                {
+                    _programCenter = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public string ProgramRight
+        {
+            get => _programRight;
+            set
+            {
+                if (_programRight != value)
+                {
+                    _programRight = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        private void ClearOutput()
+        {
+            OutputLines.Clear();
+        }
+
+        private void ClearPreview()
+        {
+            SelectedTemplate = null;  // Clears the preview by deselecting the template
+        }
+
+        // Simple Tab Button Controls
+        private async void ExecuteReset(string param)
+        {
+            var parts = param.Split(',');
+            if (parts.Length != 2) return;
+            string buttonType = parts[0];
+            string column = parts[1];
+
+            string com1 = "", com2 = "", prog = "";
+            switch (column)
+            {
+                case "Left":
+                    com1 = SelectedCom1Left;
+                    prog = ProgramLeft;
+                    break;
+                case "Center":
+                    com1 = SelectedCom1Center;
+                    com2 = SelectedCom2Center;
+                    prog = ProgramCenter;
+                    break;
+                case "Right":
+                    com2 = SelectedCom2Right;
+                    prog = ProgramRight;
+                    break;
+            }
+
+            var tokens = new Dictionary<string, string?>
+            {
+                {"comport1", com1},
+                {"comport2", com2},
+                {"username", Username},
+                {"password", Password},
+                {"opco", Opco},
+                {"program", prog},
+                {"wd", WorkingDirectory}
+            };
+
+
+            List<string> commands = new();
+            string key = buttonType + (column == "Center" ? "Both" : column);
+            switch (key)
+            {
+                case "MasterResetLeft":
+                    commands.AddRange(new[] {
+                "START /WAIT MeterMate {username} {password} {opco} /ComPort {comport1}",
+                "START /WAIT MeterMate {username} {password} {opco} /OPTOBAUDRATE 9600 /Master"
+            });
+                    break;
+                case "DemandResetLeft":
+                    commands.AddRange(new[] {
+                "START /WAIT MeterMate {username} {password} {opco} /ComPort {comport1}",
+                "START /WAIT MeterMate {username} {password} {opco} /OPTOBAUDRATE 9600 /Demand"
+            });
+                    break;
+                case "MasterDemandResetLeft":
+                    commands.AddRange(new[] {
+                "START /WAIT MeterMate {username} {password} {opco} /ComPort {comport1}",
+                "START /WAIT MeterMate {username} {password} {opco} /OPTOBAUDRATE 9600 /Master",
+                "START /WAIT MeterMate {username} {password} {opco} /ComPort {comport1}",
+                "START /WAIT MeterMate {username} {password} {opco} /OPTOBAUDRATE 9600 /Demand"
+            });
+                    break;
+                case "SwitchOpenLeft":
+                    commands.AddRange(new[] {
+                "START /WAIT MeterMate {username} {password} {opco} /ComPort {comport1}",
+                "START /WAIT MeterMate {username} {password} {opco} /OPTOBAUDRATE 9600 /COMMAND /STATE Open"
+            });
+                    break;
+                case "SwitchClosedLeft":
+                    commands.AddRange(new[] {
+                "START /WAIT MeterMate {username} {password} {opco} /ComPort {comport1}",
+                "START /WAIT MeterMate {username} {password} {opco} /OPTOBAUDRATE 9600 /COMMAND /STATE Close"
+            });
+                    break;
+                case "ProgramLeft":
+                    commands.AddRange(new[] {
+                "START /WAIT MeterMate {username} {password} {opco} /ComPort {comport1}",
+                "START /WAIT MeterMate {username} {password} {opco} /OPTOBAUDRATE 9600 /Program /PRO {Q:program} /MID 000000000000000000 /TRD Yes"
+            });
+                    break;
+                case "MasterResetBoth":
+                    commands.AddRange(new[] {
+                "START /WAIT MeterMate {username} {password} {opco} /ComPort {comport1}",
+                "START /WAIT MeterMate {username} {password} {opco} /OPTOBAUDRATE 9600 /Master",
+                "START /WAIT MeterMate {username} {password} {opco} /ComPort {comport2}",
+                "START /WAIT MeterMate {username} {password} {opco} /OPTOBAUDRATE 9600 /Master"
+            });
+                    break;
+                case "DemandResetBoth":
+                    commands.AddRange(new[] {
+                "START /WAIT MeterMate {username} {password} {opco} /ComPort {comport1}",
+                "START /WAIT MeterMate {username} {password} {opco} /OPTOBAUDRATE 9600 /Demand",
+                "START /WAIT MeterMate {username} {password} {opco} /ComPort {comport2}",
+                "START /WAIT MeterMate {username} {password} {opco} /OPTOBAUDRATE 9600 /Demand"
+            });
+                    break;
+                case "MasterDemandResetBoth":
+                    commands.AddRange(new[] {
+                "START /WAIT MeterMate {username} {password} {opco} /ComPort {comport1}",
+                "START /WAIT MeterMate {username} {password} {opco} /OPTOBAUDRATE 9600 /Master",
+                "START /WAIT MeterMate {username} {password} {opco} /ComPort {comport1}",
+                "START /WAIT MeterMate {username} {password} {opco} /OPTOBAUDRATE 9600 /Demand",
+                "START /WAIT MeterMate {username} {password} {opco} /ComPort {comport2}",
+                "START /WAIT MeterMate {username} {password} {opco} /OPTOBAUDRATE 9600 /Master",
+                "START /WAIT MeterMate {username} {password} {opco} /ComPort {comport2}",
+                "START /WAIT MeterMate {username} {password} {opco} /OPTOBAUDRATE 9600 /Demand"
+            });
+                    break;
+                case "SwitchOpenBoth":
+                    commands.AddRange(new[] {
+                "START /WAIT MeterMate {username} {password} {opco} /ComPort {comport1}",
+                "START /WAIT MeterMate {username} {password} {opco} /OPTOBAUDRATE 9600 /COMMAND /STATE Open",
+                "START /WAIT MeterMate {username} {password} {opco} /ComPort {comport2}",
+                "START /WAIT MeterMate {username} {password} {opco} /OPTOBAUDRATE 9600 /COMMAND /STATE Open"
+            });
+                    break;
+                case "SwitchClosedBoth":
+                    commands.AddRange(new[] {
+                "START /WAIT MeterMate {username} {password} {opco} /ComPort {comport1}",
+                "START /WAIT MeterMate {username} {password} {opco} /OPTOBAUDRATE 9600 /COMMAND /STATE Close",
+                "START /WAIT MeterMate {username} {password} {opco} /ComPort {comport2}",
+                "START /WAIT MeterMate {username} {password} {opco} /OPTOBAUDRATE 9600 /COMMAND /STATE Close"
+            });
+                    break;
+                case "ProgramBoth":
+                    commands.AddRange(new[] {
+                "START /WAIT MeterMate {username} {password} {opco} /ComPort {comport1}",
+                "START /WAIT MeterMate {username} {password} {opco} /OPTOBAUDRATE 9600 /Program /PRO {Q:program} /MID 000000000000000000 /TRD Yes",
+                "START /WAIT MeterMate {username} {password} {opco} /ComPort {comport2}",
+                "START /WAIT MeterMate {username} {password} {opco} /OPTOBAUDRATE 9600 /Program /PRO {Q:program} /MID 000000000000000000 /TRD Yes"
+            });
+                    break;
+                case "MasterResetRight":
+                    commands.AddRange(new[] {
+                "START /WAIT MeterMate {username} {password} {opco} /ComPort {comport2}",
+                "START /WAIT MeterMate {username} {password} {opco} /OPTOBAUDRATE 9600 /Master"
+            });
+                    break;
+                case "DemandResetRight":
+                    commands.AddRange(new[] {
+                "START /WAIT MeterMate {username} {password} {opco} /ComPort {comport2}",
+                "START /WAIT MeterMate {username} {password} {opco} /OPTOBAUDRATE 9600 /Demand"
+            });
+                    break;
+                case "MasterDemandResetRight":
+                    commands.AddRange(new[] {
+                "START /WAIT MeterMate {username} {password} {opco} /ComPort {comport2}",
+                "START /WAIT MeterMate {username} {password} {opco} /OPTOBAUDRATE 9600 /Master",
+                "START /WAIT MeterMate {username} {password} {opco} /ComPort {comport2}",
+                "START /WAIT MeterMate {username} {password} {opco} /OPTOBAUDRATE 9600 /Demand"
+            });
+                    break;
+                case "SwitchOpenRight":
+                    commands.AddRange(new[] {
+                "START /WAIT MeterMate {username} {password} {opco} /ComPort {comport2}",
+                "START /WAIT MeterMate {username} {password} {opco} /OPTOBAUDRATE 9600 /COMMAND /STATE Open"
+            });
+                    break;
+                case "SwitchClosedRight":
+                    commands.AddRange(new[] {
+                "START /WAIT MeterMate {username} {password} {opco} /ComPort {comport2}",
+                "START /WAIT MeterMate {username} {password} {opco} /OPTOBAUDRATE 9600 /COMMAND /STATE Close"
+            });
+                    break;
+                case "ProgramRight":
+                    commands.AddRange(new[] {
+                "START /WAIT MeterMate {username} {password} {opco} /ComPort {comport2}",
+                "START /WAIT MeterMate {username} {password} {opco} /OPTOBAUDRATE 9600 /Program /PRO {Q:program} /MID 000000000000000000 /TRD Yes"
+            });
+                    break;
+                default:
+                    commands.Add("echo 'Command not defined'");
+                    break;
+            }
+
+            if (!ShowDetailedOutput)
+            {
+                AppendOutput($"{buttonType.Replace("Reset", " Reset").Replace("Program", " Program").Replace("Switch", " Switch")} {(column == "Center" ? "Both" : column)}");
+            }
+
+            foreach (var cmdTemplate in commands)
+            {
+                string expandedCmd = TemplateEngine.Expand(cmdTemplate, tokens);
+                await RunCustomAsync(expandedCmd, ShowDetailedOutput);
+            }
+        }
+
+        private async Task RunCustomAsync(string command, bool showDetailed = true)
+        {
+            if (string.IsNullOrWhiteSpace(command)) return;
+
+            try
+            {
+                // Show the command in detailed mode (like CommandRunner)
+                if (showDetailed)
+                {
+                    OutputLines.Add("> " + command);
+                }
+
+                _runCts?.Cancel();
+                _runCts = new CancellationTokenSource();
+
+                _currentProcess = new Process
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = "cmd.exe",
+                        Arguments = "/c " + command,
+                        WorkingDirectory = WorkingDirectory,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    }
+                };
+
+                _currentProcess.OutputDataReceived += (s, e) =>
+                {
+                    if (showDetailed) OnUI(() => OutputLines.Add(e.Data ?? ""));
+                };
+                _currentProcess.ErrorDataReceived += (s, e) =>
+                {
+                    if (showDetailed) OnUI(() => OutputLines.Add($"ERROR: {e.Data ?? ""}"));
+                };
+
+                _currentProcess.Start();
+                _currentProcess.BeginOutputReadLine();
+                _currentProcess.BeginErrorReadLine();
+
+                await _currentProcess.WaitForExitAsync(_runCts.Token);
+
+                // Show exit code in detailed mode (like CommandRunner)
+                if (showDetailed)
+                {
+                    OutputLines.Add($"[exit {_currentProcess.ExitCode}]");
+                }
+            }
+            catch (Exception ex)
+            {
+                if (showDetailed || ex.Message.Contains("cannot find the file", StringComparison.OrdinalIgnoreCase))
+                {
+                    OutputLines.Add($"Error: {ex.Message}");
+                }
+            }
+            finally
+            {
+                _currentProcess?.Dispose();
+                _currentProcess = null;
+            }
+        }
+        #endregion
+
+        #region Inputs / Working Directory
         private string _selectedCom1;
         private string _selectedCom2;
         private string _username;
@@ -277,6 +641,10 @@ namespace CmdRunnerPro.ViewModels
         public ICommand DeletePresetCommand { get; }
         public ICommand ToggleViewModeCommand { get; }
 
+        public RelayCommand ClearOutputCommand { get; private set; }
+        public RelayCommand ClearCommand { get; private set; }
+        public RelayCommand<string> ResetCommand { get; private set; }
+
         private void RaiseCommandCanExecuteChanged()
         {
             (LoadPresetCommand as RelayCommand<InputPreset?>)?.RaiseCanExecuteChanged();
@@ -287,9 +655,9 @@ namespace CmdRunnerPro.ViewModels
             (NewTemplateCommand as RelayCommand)?.RaiseCanExecuteChanged();
             (CloneTemplateCommand as RelayCommand)?.RaiseCanExecuteChanged();
             (DeleteTemplateCommand as RelayCommand)?.RaiseCanExecuteChanged();
-
-
-
+            ClearOutputCommand?.RaiseCanExecuteChanged();
+            ClearCommand?.RaiseCanExecuteChanged();
+            ResetCommand?.RaiseCanExecuteChanged();
         }
         #endregion
 
@@ -417,15 +785,33 @@ namespace CmdRunnerPro.ViewModels
                     showDetailed: ShowDetailedOutput,               // 👈 pass the toggle
                     new Progress<CommandOutputWithState>(report =>
                     {
-                        CurrentCommand = report.CurrentCommand;
-                        AppendOutput(report.Output.Line);
+                        if (ShowDetailedOutput)
+                        {
+                            CurrentCommand = report.CurrentCommand;
+                            AppendOutput(report.Output.Line);
+                        }
+                        else
+                        {
+                            // Simple mode: show command once per unique command
+                            if (CurrentCommand != report.CurrentCommand)
+                            {
+                                CurrentCommand = report.CurrentCommand;
+                                AppendOutput($"Running command: {report.CurrentCommand}");
+                            }
+                        }
                     }),
                     _runCts.Token
                 );
 
-                AppendOutput(success
-                    ? "--- All commands completed ---"
-                    : "--- Execution stopped due to error ---");
+                // Show completion message based on detailed mode
+                if (ShowDetailedOutput)
+                {
+                    AppendOutput(success ? "--- All commands completed ---" : "--- Execution stopped due to error ---");
+                }
+                else
+                {
+                    AppendOutput(success ? "--- Commands completed ---" : "--- Execution stopped ---");
+                }
             }
             catch (OperationCanceledException)
             {
@@ -782,16 +1168,8 @@ namespace CmdRunnerPro.ViewModels
             }
         }
 
-        public ObservableCollection<string> MdixPrimaryColors { get; } = new(new[]
-        {
-            "Red","Pink","Purple","DeepPurple","Indigo","Blue","LightBlue","Cyan","Teal",
-            "Green","LightGreen","Lime","Yellow","Amber","Orange","DeepOrange","Brown","BlueGrey","Grey"
-        });
-        public ObservableCollection<string> MdixSecondaryColors { get; } = new(new[]
-        {
-            "Red","Pink","Purple","DeepPurple","Indigo","Blue","LightBlue","Cyan","Teal",
-            "Green","LightGreen","Lime","Yellow","Amber","Orange","DeepOrange"
-        });
+        public ObservableCollection<string> MdixPrimaryColors { get; } = new(new[] { "Red", "Pink", "Purple", "DeepPurple", "Indigo", "Blue", "LightBlue", "Cyan", "Teal", "Green", "LightGreen", "Lime", "Yellow", "Amber", "Orange", "DeepOrange", "Brown", "BlueGrey", "Grey" });
+        public ObservableCollection<string> MdixSecondaryColors { get; } = new(new[] { "Red", "Pink", "Purple", "DeepPurple", "Indigo", "Blue", "LightBlue", "Cyan", "Teal", "Green", "LightGreen", "Lime", "Yellow", "Amber", "Orange", "DeepOrange" });
 
         private void ApplyTheme()
         {
@@ -836,9 +1214,7 @@ namespace CmdRunnerPro.ViewModels
         }
 
         // Theme settings persisted in a simple cfg file (local appdata)
-        private static readonly string ThemeSettingsPath =
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                         "CmdRunnerPro", "theme.cfg");
+        private static readonly string ThemeSettingsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MMCore", "theme.cfg");
 
         private void LoadThemeSettings()
         {
@@ -881,12 +1257,7 @@ namespace CmdRunnerPro.ViewModels
                 if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                     Directory.CreateDirectory(dir);
 
-                var lines = new[]
-                {
-                    $"IsDarkTheme={IsDarkTheme}",
-                    $"PrimaryColor={PrimaryColor}",
-                    $"SecondaryColor={SecondaryColor}"
-                };
+                var lines = new[] { $"IsDarkTheme={IsDarkTheme}", $"PrimaryColor={PrimaryColor}", $"SecondaryColor={SecondaryColor}" };
                 File.WriteAllLines(ThemeSettingsPath, lines);
             }
             catch { /* ignore */ }
@@ -912,9 +1283,7 @@ namespace CmdRunnerPro.ViewModels
         #region Theme / Ports init
         private void RefreshPorts()
         {
-            var ports = SerialPort.GetPortNames()
-                                  .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
-                                  .ToList();
+            var ports = SerialPort.GetPortNames().OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList();
             ComPortOptions = new ObservableCollection<string>(ports);
         }
         #endregion
@@ -957,12 +1326,8 @@ namespace CmdRunnerPro.ViewModels
         #endregion
 
         #region Preset persistence (unchanged)
-        private static readonly string PresetsPath =
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                         "CmdRunnerPro", "presets.json");
-        private static readonly string LastUsedPath =
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                         "CmdRunnerPro", "lastused.json");
+        private static readonly string PresetsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MMCore", "presets.json");
+        private static readonly string LastUsedPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MMCore", "lastused.json");
 
         // small DTOs for persistence
         private sealed class TokenSnapshot
@@ -995,8 +1360,7 @@ namespace CmdRunnerPro.ViewModels
                 EnsureDataDir();
                 if (!File.Exists(PresetsPath)) return;
 
-                var list = JsonSerializer.Deserialize<List<InputPreset>>(File.ReadAllText(PresetsPath))
-                           ?? new List<InputPreset>();
+                var list = JsonSerializer.Deserialize<List<InputPreset>>(File.ReadAllText(PresetsPath)) ?? new List<InputPreset>();
                 Presets = new ObservableCollection<InputPreset>(list);
                 OnPropertyChanged(nameof(Presets));
             }
@@ -1008,8 +1372,7 @@ namespace CmdRunnerPro.ViewModels
             try
             {
                 EnsureDataDir();
-                File.WriteAllText(PresetsPath,
-                    JsonSerializer.Serialize(Presets, new JsonSerializerOptions { WriteIndented = true }));
+                File.WriteAllText(PresetsPath, JsonSerializer.Serialize(Presets, new JsonSerializerOptions { WriteIndented = true }));
             }
             catch { /* ignore */ }
         }
@@ -1060,8 +1423,7 @@ namespace CmdRunnerPro.ViewModels
                     PresetName = SelectedPreset?.Name,
                     Tokens = CaptureTokens()
                 };
-                File.WriteAllText(LastUsedPath,
-                    JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true }));
+                File.WriteAllText(LastUsedPath, JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true }));
             }
             catch { /* ignore */ }
         }
@@ -1076,8 +1438,7 @@ namespace CmdRunnerPro.ViewModels
 
                 if (!string.IsNullOrWhiteSpace(state.PresetName))
                 {
-                    var match = Presets?.FirstOrDefault(p =>
-                        string.Equals(p.Name, state.PresetName, StringComparison.OrdinalIgnoreCase));
+                    var match = Presets?.FirstOrDefault(p => string.Equals(p.Name, state.PresetName, StringComparison.OrdinalIgnoreCase));
                     if (match != null)
                     {
                         SelectedPreset = match;
@@ -1115,13 +1476,10 @@ namespace CmdRunnerPro.ViewModels
         private async Task SavePresetAsAsync()
         {
             // Suggest a name
-            var suggestion =
-                !string.IsNullOrWhiteSpace(SelectedPreset?.Name)
-                ? UniquePresetName($"{SelectedPreset.Name} (Copy)")
-                : GenerateUniquePresetName();
+            var suggestion = !string.IsNullOrWhiteSpace(SelectedPreset?.Name) ? UniquePresetName($"{SelectedPreset.Name} (Copy)") : GenerateUniquePresetName();
 
             // Show the prompt
-            var prompt = new CmdRunnerPro.Views.NamePrompt
+            var prompt = new MMCore.Views.NamePrompt
             {
                 Title = "Save Preset As",
                 Prompt = "Preset name",
@@ -1176,21 +1534,16 @@ namespace CmdRunnerPro.ViewModels
         #region Template storage (JSON per file, name-based, rename-aware)
         private static readonly JsonSerializerOptions _json = new() { WriteIndented = true };
 
-        // %AppData%\CmdRunnerPro_v2\Templates
-        private static string TemplatesFolder =>
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                         "CmdRunnerPro_v2", "Templates");
+        // %AppData%\MMCore_v2\Templates
+        private static string TemplatesFolder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MMCore_v2", "Templates");
 
-        private static string PathForName(string name) =>
-            Path.Combine(TemplatesFolder, $"{ToSafeFileName(name)}.json");
+        private static string PathForName(string name) => Path.Combine(TemplatesFolder, $"{ToSafeFileName(name)}.json");
 
         private static string ToSafeFileName(string name)
         {
             var invalid = Path.GetInvalidFileNameChars();
-            var cleaned = new string((name ?? "Template")
-                .Select(ch => invalid.Contains(ch) ? '_' : ch).ToArray());
-            var normalized = string.Join(" ", cleaned.Split(new[] { ' ' },
-                StringSplitOptions.RemoveEmptyEntries));
+            var cleaned = new string((name ?? "Template").Select(ch => invalid.Contains(ch) ? '_' : ch).ToArray());
+            var normalized = string.Join(" ", cleaned.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries));
             return string.IsNullOrWhiteSpace(normalized) ? "Template" : normalized;
         }
 
@@ -1200,8 +1553,7 @@ namespace CmdRunnerPro.ViewModels
             if (t is null) return;
             Directory.CreateDirectory(TemplatesFolder);
 
-            if (!string.IsNullOrWhiteSpace(originalName) &&
-                !originalName.Equals(t.Name, StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrWhiteSpace(originalName) && !originalName.Equals(t.Name, StringComparison.OrdinalIgnoreCase))
             {
                 var oldPath = PathForName(originalName);
                 if (File.Exists(oldPath)) File.Delete(oldPath);
@@ -1236,9 +1588,7 @@ namespace CmdRunnerPro.ViewModels
                 catch { /* ignore bad files */ }
             }
 
-            Templates = new ObservableCollection<Template>(
-                items.OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase));
-
+            Templates = new ObservableCollection<Template>(items.OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase));
             SelectedTemplate = Templates.FirstOrDefault();
         }
 
@@ -1266,10 +1616,10 @@ namespace CmdRunnerPro.ViewModels
 
         private void Reselect(string name)
         {
-            SelectedTemplate = Templates.FirstOrDefault(t =>
-                t.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            SelectedTemplate = Templates.FirstOrDefault(t => t.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
         }
         #endregion
+
         private string UniquePresetName(string baseName)
         {
             var existing = new HashSet<string>(Presets.Select(x => x?.Name ?? ""), StringComparer.OrdinalIgnoreCase);
@@ -1279,6 +1629,7 @@ namespace CmdRunnerPro.ViewModels
             do { candidate = $"{baseName} ({i++})"; } while (existing.Contains(candidate));
             return candidate;
         }
+
         public class CommandOutputWithState
         {
             public CommandOutput Output { get; set; }
@@ -1309,6 +1660,5 @@ namespace CmdRunnerPro.ViewModels
             }
             return false;
         }
-
     }
 }

@@ -2,7 +2,7 @@ using System;
 using System.Globalization;
 using System.Windows.Data;
 
-namespace CmdRunnerPro
+namespace MMCore
 {
     public sealed class InverseBoolConverter : IValueConverter
     {

@@ -5,9 +5,9 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using CmdRunnerPro.Models;
+using MMCore.Models;
 
-namespace CmdRunnerPro.Services
+namespace MMCore.Services
 {
     public sealed class FileTemplateRepository : ITemplateRepository
     {
@@ -18,7 +18,7 @@ namespace CmdRunnerPro.Services
         {
             StorageRoot = storageRoot ?? Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "CmdRunnerPro_v2", "Templates");
+                "MMCore_v2", "Templates");
             Directory.CreateDirectory(StorageRoot);
         }
 
