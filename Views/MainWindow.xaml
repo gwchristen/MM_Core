@@ -14,63 +14,63 @@
         Title="CMD Runner Pro"
         Width="1100" Height="Auto"
         Style="{StaticResource MaterialDesignWindow}">
-    <Window.Resources>
-        <conv:NullToBoolConverter x:Key="NullToBool"/>
-        <conv:InverseBoolConverter x:Key="InverseBool"/>
-    </Window.Resources>
+	<Window.Resources>
+		<conv:NullToBoolConverter x:Key="NullToBool"/>
+		<conv:InverseBoolConverter x:Key="InverseBool"/>
+	</Window.Resources>
 
-    <materialDesign:DialogHost Identifier="RootDialog">
-        <DockPanel>
+	<materialDesign:DialogHost Identifier="RootDialog">
+		<DockPanel>
 
-            <!-- Top Bar -->
-            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="8">
-                <ToggleButton Content="Dark Theme"
+			<!-- Top Bar -->
+			<StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="8">
+				<ToggleButton Content="Dark Theme"
                               IsChecked="{Binding IsDarkTheme, Mode=TwoWay}"
                               Style="{DynamicResource MaterialDesignSwitchToggleButton}"
                               Margin="0,0,12,0"/>
-                <TextBlock Text="Primary:" VerticalAlignment="Center" Margin="12,0,4,0"/>
-                <ComboBox Width="120"
+				<TextBlock Text="Primary:" VerticalAlignment="Center" Margin="12,0,4,0"/>
+				<ComboBox Width="120"
                           SelectedItem="{Binding PrimaryColor, Mode=TwoWay}"
                           ItemsSource="{Binding MdixPrimaryColors}" SelectionChanged="ComboBox_SelectionChanged" />
-                <TextBlock Text="Secondary:" VerticalAlignment="Center" Margin="12,0,4,0"/>
-                <ComboBox Width="120"
+				<TextBlock Text="Secondary:" VerticalAlignment="Center" Margin="12,0,4,0"/>
+				<ComboBox Width="120"
                           SelectedItem="{Binding SecondaryColor, Mode=TwoWay}"
                           ItemsSource="{Binding MdixSecondaryColors}" />
-                <CheckBox Content="Timestamps"
+				<CheckBox Content="Timestamps"
                           IsChecked="{Binding Settings.ShowTimestamps, Mode=TwoWay}"
                           Margin="16,0,0,0" VerticalAlignment="Center"/>
-            </StackPanel>
+			</StackPanel>
 
-            <StackPanel Orientation="Horizontal" Margin="2,0,0,0">
-                <Border Width="6" Height="6" CornerRadius="4"
+			<StackPanel Orientation="Horizontal" Margin="2,0,0,0">
+				<Border Width="6" Height="6" CornerRadius="4"
                         Background="{DynamicResource PrimaryHueMidBrush}"
                         Margin="2,0,0,0"/>
-                <Border Width="6" Height="6" CornerRadius="4"
+				<Border Width="6" Height="6" CornerRadius="4"
                         Background="{DynamicResource SecondaryAccentBrush}"
                         Margin="2,0,0,0"/>
-            </StackPanel>
+			</StackPanel>
 
-            <!-- Tabs -->
-            <TabControl Margin="8" DockPanel.Dock="Top">
-                <TabItem Header="Simple">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <StackPanel>
-                            <!-- Above columns: Shared inputs centered -->
-                            <TextBlock Text="Shared Inputs" FontWeight="SemiBold" Margin="0,0,0,8" HorizontalAlignment="Center"/>
-                            <Grid HorizontalAlignment="Center">
-                                <WrapPanel Orientation="Horizontal" Margin="0,0,0,16">
-                                    <TextBox Style="{StaticResource MaterialDesignOutlinedTextBox}"
+			<!-- Tabs -->
+			<TabControl Margin="8" DockPanel.Dock="Top">
+				<TabItem Header="Simple">
+					<ScrollViewer VerticalScrollBarVisibility="Auto">
+						<StackPanel>
+							<!-- Above columns: Shared inputs centered -->
+							<TextBlock Text="Shared Inputs" FontWeight="SemiBold" Margin="0,0,0,8" HorizontalAlignment="Center"/>
+							<Grid HorizontalAlignment="Center">
+								<WrapPanel Orientation="Horizontal" Margin="0,0,0,16">
+									<TextBox Style="{StaticResource MaterialDesignOutlinedTextBox}"
                              materialDesign:HintAssist.Hint="Username"
                              Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
                              Width="150" Margin="0,0,8,0"/>
-                                    <Grid Margin="0,0,8,0">
-                                        <PasswordBox x:Name="PasswordBoxSimple"
+									<Grid Margin="0,0,8,0">
+										<PasswordBox x:Name="PasswordBoxSimple"
                                      Style="{StaticResource MaterialDesignOutlinedPasswordBox}"
                                      materialDesign:HintAssist.Hint="Password"
                                      utils:PasswordBoxHelper.BindPassword="True"
                                      utils:PasswordBoxHelper.BoundPassword="{Binding Password, Mode=TwoWay}"
                                      Width="150" />
-                                        <TextBox x:Name="PasswordRevealTextBoxSimple"
+										<TextBox x:Name="PasswordRevealTextBoxSimple"
                                  Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                  materialDesign:HintAssist.Hint="Password"
                                  Text="{Binding Password, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -78,7 +78,7 @@
                                  Visibility="Collapsed"
                                  Padding="12,10,40,10"
                                  Width="150" />
-                                        <Button Style="{StaticResource MaterialDesignIconButton}"
+										<Button Style="{StaticResource MaterialDesignIconButton}"
                                 Width="28" Height="28"
                                 HorizontalAlignment="Right"
                                 VerticalAlignment="Center"
@@ -89,164 +89,160 @@
                                 PreviewMouseLeftButtonDown="RevealPasswordSimple_PreviewMouseLeftButtonDown"
                                 PreviewMouseLeftButtonUp="RevealPasswordSimple_PreviewMouseLeftButtonUp"
                                 MouseLeave="RevealPasswordSimple_MouseLeave">
-                                            <materialDesign:PackIcon Kind="Eye" Width="18" Height="18"/>
-                                        </Button>
-                                    </Grid>
-                                    <TextBox Style="{StaticResource MaterialDesignOutlinedTextBox}"
+											<materialDesign:PackIcon Kind="Eye" Width="18" Height="18"/>
+										</Button>
+									</Grid>
+									<TextBox Style="{StaticResource MaterialDesignOutlinedTextBox}"
                              materialDesign:HintAssist.Hint="Opco"
                              Text="{Binding Opco}"
                              Width="100" Margin="0,0,8,0"/>
-                                    <DockPanel Width="300" Margin="0,0,8,0">
-                                        <TextBox Style="{StaticResource MaterialDesignOutlinedTextBox}"
+									<DockPanel Width="300" Margin="0,0,8,0">
+										<TextBox Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                  materialDesign:HintAssist.Hint="Working Directory"
                                  Text="{Binding WorkingDirectory}" />
-                                        <Button Content="Browse"
+										<Button Content="Browse"
                                 Command="{Binding BrowseWorkingDirectoryCommand}"
                                 Style="{StaticResource MaterialDesignOutlinedButton}"
                                 Margin="8,0,0,0" />
-                                    </DockPanel>
-                                </WrapPanel>
-                            </Grid>
+									</DockPanel>
+								</WrapPanel>
+							</Grid>
 
-                            <!-- Columns in a UniformGrid for equal width and alignment -->
-                            <UniformGrid Columns="3" Margin="0,0,0,16">
-                                <!-- Left WECO -->
-                                <GroupBox Header="Left WECO" Margin="8">
-                                    <StackPanel Margin="8">
-                                        <ComboBox Style="{StaticResource MaterialDesignOutlinedComboBox}"
+							<!-- Columns in a UniformGrid for equal width and alignment -->
+							<UniformGrid Columns="3" Margin="0,0,0,16">
+								<!-- Left WECO -->
+								<GroupBox Header="Left WECO" Margin="8">
+									<StackPanel Margin="8">
+										<ComboBox Style="{StaticResource MaterialDesignOutlinedComboBox}"
                                   ItemsSource="{Binding ComPortOptions}"
                                   SelectedItem="{Binding SelectedCom1Left}"
                                   Margin="0,0,0,8"/>
-                                        <TextBox Style="{StaticResource MaterialDesignOutlinedTextBox}"
+										<TextBox Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                  materialDesign:HintAssist.Hint="Program"
                                  Text="{Binding ProgramLeft}" Margin="0,0,0,16"/>
-                                        <UniformGrid Columns="2" Rows="3">
-                                            <Button Content="Master Reset" Command="{Binding ResetCommand}" CommandParameter="MasterReset,Left" Margin="4" ToolTip="Reset master system"/>
-                                            <Button Content="Demand Reset" Command="{Binding ResetCommand}" CommandParameter="DemandReset,Left" Margin="4" ToolTip="Reset demand system"/>
-                                            <Button Content="Master/Demand Reset" Command="{Binding ResetCommand}" CommandParameter="MasterDemandReset,Left" Margin="4" ToolTip="Reset both master and demand"/>
-                                            <Button Content="Switch Open" Command="{Binding ResetCommand}" CommandParameter="SwitchOpen,Left" Margin="4" ToolTip="Open switch"/>
-                                            <Button Content="Switch Closed" Command="{Binding ResetCommand}" CommandParameter="SwitchClosed,Left" Margin="4" ToolTip="Close switch"/>
-                                            <Button Content="Program" Command="{Binding ResetCommand}" CommandParameter="Program,Left" Margin="4" ToolTip="Execute program"/>
-                                        </UniformGrid>
-                                    </StackPanel>
-                                </GroupBox>
+										<UniformGrid Columns="2" Rows="3">
+											<Button Content="Master Reset" Command="{Binding ResetCommand}" CommandParameter="MasterReset,Left" Margin="4" ToolTip="Reset master system"/>
+											<Button Content="Demand Reset" Command="{Binding ResetCommand}" CommandParameter="DemandReset,Left" Margin="4" ToolTip="Reset demand system"/>
+											<Button Content="Master/Demand Reset" Command="{Binding ResetCommand}" CommandParameter="MasterDemandReset,Left" Margin="4" ToolTip="Reset both master and demand systems"/>
+											<Button Content="Switch Open" Command="{Binding ResetCommand}" CommandParameter="SwitchOpen,Left" Margin="4" ToolTip="Open switch"/>
+											<Button Content="Switch Closed" Command="{Binding ResetCommand}" CommandParameter="SwitchClosed,Left" Margin="4" ToolTip="Close switch"/>
+											<Button Content="Program" Command="{Binding ResetCommand}" CommandParameter="Program,Left" Margin="4" ToolTip="Execute program"/>
+										</UniformGrid>
+									</StackPanel>
+								</GroupBox>
 
-                                <!-- Both WECOs -->
-                                <GroupBox Header="Both WECOs" Margin="8">
-                                    <Grid HorizontalAlignment="Center">
-                                        <StackPanel Margin="8">
-                                            <!-- COM boxes side-by-side -->
-                                            <Grid Margin="0,0,0,8">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="120"/>
-                                                    <ColumnDefinition Width="8"/>
-                                                    <ColumnDefinition Width="120"/>
-                                                </Grid.ColumnDefinitions>
-                                                <ComboBox Grid.Column="0" Style="{StaticResource MaterialDesignOutlinedComboBox}"
+								<!-- Both WECOs -->
+								<GroupBox Header="Both WECOs" Margin="8">
+									<Grid HorizontalAlignment="Center">
+										<StackPanel Margin="8">
+											<!-- COM boxes side-by-side -->
+											<Grid Margin="0,0,0,8">
+												<Grid.ColumnDefinitions>
+													<ColumnDefinition Width="120"/>
+													<ColumnDefinition Width="8"/>
+													<ColumnDefinition Width="120"/>
+												</Grid.ColumnDefinitions>
+												<ComboBox Grid.Column="0" Style="{StaticResource MaterialDesignOutlinedComboBox}"
                                           ItemsSource="{Binding ComPortOptions}"
                                           SelectedItem="{Binding SelectedCom1Center}" />
-                                                <ComboBox Grid.Column="2" Style="{StaticResource MaterialDesignOutlinedComboBox}"
+												<ComboBox Grid.Column="2" Style="{StaticResource MaterialDesignOutlinedComboBox}"
                                           ItemsSource="{Binding ComPortOptions}"
                                           SelectedItem="{Binding SelectedCom2Center}" />
-                                            </Grid>
-                                            <TextBox Style="{StaticResource MaterialDesignOutlinedTextBox}"
+											</Grid>
+											<TextBox Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                      materialDesign:HintAssist.Hint="Program"
                                      Text="{Binding ProgramCenter}" Margin="0,0,0,16"/>
-                                            <UniformGrid Columns="2" Rows="3">
-                                                <Button Content="Master Reset" Command="{Binding ResetCommand}" CommandParameter="MasterReset,Center" Margin="4" ToolTip="Reset master system"/>
-                                                <Button Content="Demand Reset" Command="{Binding ResetCommand}" CommandParameter="DemandReset,Center" Margin="4" ToolTip="Reset demand system"/>
-                                                <Button Content="Master/Demand Reset" Command="{Binding ResetCommand}" CommandParameter="MasterDemandReset,Center" Margin="4" ToolTip="Reset both master and demand"/>
-                                                <Button Content="Switch Open" Command="{Binding ResetCommand}" CommandParameter="SwitchOpen,Center" Margin="4" ToolTip="Open switch"/>
-                                                <Button Content="Switch Closed" Command="{Binding ResetCommand}" CommandParameter="SwitchClosed,Center" Margin="4" ToolTip="Close switch"/>
-                                                <Button Content="Program" Command="{Binding ResetCommand}" CommandParameter="Program,Center" Margin="4" ToolTip="Execute program"/>
-                                            </UniformGrid>
-                                        </StackPanel>
-                                    </Grid>
-                                </GroupBox>
+											<UniformGrid Columns="2" Rows="3">
+												<Button Content="Master Reset" Command="{Binding ResetCommand}" CommandParameter="MasterReset,Center" Margin="4" ToolTip="Reset master system"/>
+												<Button Content="Demand Reset" Command="{Binding ResetCommand}" CommandParameter="DemandReset,Center" Margin="4" ToolTip="Reset demand system"/>
+												<Button Content="Master/Demand Reset" Command="{Binding ResetCommand}" CommandParameter="MasterDemandReset,Center" Margin="4" ToolTip="Reset both master and demand systems"/>
+												<Button Content="Switch Open" Command="{Binding ResetCommand}" CommandParameter="SwitchOpen,Center" Margin="4" ToolTip="Open switch"/>
+												<Button Content="Switch Closed" Command="{Binding ResetCommand}" CommandParameter="SwitchClosed,Center" Margin="4" ToolTip="Close switch"/>
+												<Button Content="Program" Command="{Binding ResetCommand}" CommandParameter="Program,Center" Margin="4" ToolTip="Execute program"/>
+											</UniformGrid>
+										</StackPanel>
+									</Grid>
+								</GroupBox>
 
-                                <!-- Right WECO -->
-                                <GroupBox Header="Right WECO" Margin="8">
-                                    <StackPanel Margin="8">
-                                        <ComboBox Style="{StaticResource MaterialDesignOutlinedComboBox}"
+								<!-- Right WECO -->
+								<GroupBox Header="Right WECO" Margin="8">
+									<StackPanel Margin="8">
+										<ComboBox Style="{StaticResource MaterialDesignOutlinedComboBox}"
                                   ItemsSource="{Binding ComPortOptions}"
                                   SelectedItem="{Binding SelectedCom2Right}"
                                   Margin="0,0,0,8"/>
-                                        <TextBox Style="{StaticResource MaterialDesignOutlinedTextBox}"
+										<TextBox Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                  materialDesign:HintAssist.Hint="Program"
                                  Text="{Binding ProgramRight}" Margin="0,0,0,16"/>
-                                        <UniformGrid Columns="2" Rows="3">
-                                            <Button Content="Master Reset" Command="{Binding ResetCommand}" CommandParameter="MasterReset,Right" Margin="4" ToolTip="Reset master system"/>
-                                            <Button Content="Demand Reset" Command="{Binding ResetCommand}" CommandParameter="DemandReset,Right" Margin="4" ToolTip="Reset demand system"/>
-                                            <Button Content="Master/Demand Reset" Command="{Binding ResetCommand}" CommandParameter="MasterDemandReset,Right" Margin="4" ToolTip="Reset both master and demand"/>
-                                            <Button Content="Switch Open" Command="{Binding ResetCommand}" CommandParameter="SwitchOpen,Right" Margin="4" ToolTip="Open switch"/>
-                                            <Button Content="Switch Closed" Command="{Binding ResetCommand}" CommandParameter="SwitchClosed,Right" Margin="4" ToolTip="Close switch"/>
-                                            <Button Content="Program" Command="{Binding ResetCommand}" CommandParameter="Program,Right" Margin="4" ToolTip="Execute program"/>
-                                        </UniformGrid>
-                                    </StackPanel>
-                                </GroupBox>
-                            </UniformGrid>
+										<UniformGrid Columns="2" Rows="3">
+											<Button Content="Master Reset" Command="{Binding ResetCommand}" CommandParameter="MasterReset,Right" Margin="4" ToolTip="Reset master system"/>
+											<Button Content="Demand Reset" Command="{Binding ResetCommand}" CommandParameter="DemandReset,Right" Margin="4" ToolTip="Reset demand system"/>
+											<Button Content="Master/Demand Reset" Command="{Binding ResetCommand}" CommandParameter="MasterDemandReset,Right" Margin="4" ToolTip="Reset both master and demand systems"/>
+											<Button Content="Switch Open" Command="{Binding ResetCommand}" CommandParameter="SwitchOpen,Right" Margin="4" ToolTip="Open switch"/>
+											<Button Content="Switch Closed" Command="{Binding ResetCommand}" CommandParameter="SwitchClosed,Right" Margin="4" ToolTip="Close switch"/>
+											<Button Content="Program" Command="{Binding ResetCommand}" CommandParameter="Program,Right" Margin="4" ToolTip="Execute program"/>
+										</UniformGrid>
+									</StackPanel>
+								</GroupBox>
+							</UniformGrid>
 
-                            <!-- Clear Output button centered -->
-                            <Button Content="Clear Output"
+							<!-- Clear Output button centered -->
+							<Button Content="Clear Output"
                     Command="{Binding ClearOutputCommand}"
                     Style="{StaticResource MaterialDesignOutlinedButton}"
                     HorizontalAlignment="Center" Margin="0,16,0,0"/>
 
-                            <!-- Output spanning full width, limited height, with auto-scroll -->
-                            <Border Padding="8" CornerRadius="4"
+							<!-- Output spanning full width, limited height, with auto-scroll -->
+							<Border Padding="8" CornerRadius="4"
                     Background="{DynamicResource MaterialDesignPaper}"
                     BorderBrush="{DynamicResource MaterialDesignDivider}"
                     BorderThickness="1" Margin="8" Height="150">
-                                <ListBox x:Name="OutputListSimple"
-                         ItemsSource="{Binding OutputLines}"
-                         FontFamily="Consolas"
-                         FontSize="12"
-                         Background="Transparent"
-                         BorderThickness="0"
-                         ScrollViewer.VerticalScrollBarVisibility="Auto"/>
-                            </Border>
-                        </StackPanel>
-                    </ScrollViewer>
-                </TabItem>
+								<ScrollViewer VerticalScrollBarVisibility="Auto">
+									<TextBox x:Name="OutputTextBoxSimple" Text="{Binding OutputText, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" FontFamily="Consolas" FontSize="12" Background="Transparent" BorderThickness="0"/>
+								</ScrollViewer>
+							</Border>
+						</StackPanel>
+					</ScrollViewer>
+				</TabItem>
 
-                <TabItem Header="Advanced">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="360"/>
-                            <ColumnDefinition Width="10"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
+				<TabItem Header="Advanced">
+					<Grid>
+						<Grid.ColumnDefinitions>
+							<ColumnDefinition Width="360"/>
+							<ColumnDefinition Width="10"/>
+							<ColumnDefinition Width="*"/>
+						</Grid.ColumnDefinitions>
 
-                        <!-- ========== Left: Inputs + Presets ========== -->
-                        <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto">
-                            <StackPanel Margin="0,0,8,0">
-                                <TextBlock Text="Inputs" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                                <StackPanel Orientation="Vertical" Margin="0,0,0,12">
-                                    <ComboBox Style="{StaticResource MaterialDesignOutlinedComboBox}"
+						<!-- ========== Left: Inputs + Presets ========== -->
+						<ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto">
+							<StackPanel Margin="0,0,8,0">
+								<TextBlock Text="Inputs" FontWeight="SemiBold" Margin="0,0,0,4"/>
+								<StackPanel Orientation="Vertical" Margin="0,0,0,12">
+									<ComboBox Style="{StaticResource MaterialDesignOutlinedComboBox}"
                                               ItemsSource="{Binding ComPortOptions}"
                                               SelectedItem="{Binding SelectedCom1}" />
-                                    <ComboBox Style="{StaticResource MaterialDesignOutlinedComboBox}"
+									<ComboBox Style="{StaticResource MaterialDesignOutlinedComboBox}"
                                               ItemsSource="{Binding ComPortOptions}"
                                               SelectedItem="{Binding SelectedCom2}"
                                               Margin="0,8,0,0" />
-                                    <TextBox Style="{StaticResource MaterialDesignOutlinedTextBox}"
+									<TextBox Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                              materialDesign:HintAssist.Hint="Username"
                                              Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
                                              Margin="0,8,0,0"/>
-                                    <Grid Margin="0,8,0,0">
-                                        <PasswordBox x:Name="PasswordBox"
+									<Grid Margin="0,8,0,0">
+										<PasswordBox x:Name="PasswordBox"
                                                      Style="{StaticResource MaterialDesignOutlinedPasswordBox}"
                                                      materialDesign:HintAssist.Hint="Password"
                                                      utils:PasswordBoxHelper.BindPassword="True"
                                                      utils:PasswordBoxHelper.BoundPassword="{Binding Password, Mode=TwoWay}" />
-                                        <TextBox x:Name="PasswordRevealTextBox"
+										<TextBox x:Name="PasswordRevealTextBox"
                                                  Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                                  materialDesign:HintAssist.Hint="Password"
                                                  Text="{Binding Password, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                  IsReadOnly="True"
                                                  Visibility="Collapsed"
                                                  Padding="12,10,40,10" />
-                                        <Button Style="{StaticResource MaterialDesignIconButton}"
+										<Button Style="{StaticResource MaterialDesignIconButton}"
                                                 Width="28" Height="28"
                                                 HorizontalAlignment="Right"
                                                 VerticalAlignment="Center"
@@ -257,103 +253,103 @@
                                                 PreviewMouseLeftButtonDown="RevealPassword_PreviewMouseLeftButtonDown"
                                                 PreviewMouseLeftButtonUp="RevealPassword_PreviewMouseLeftButtonUp"
                                                 MouseLeave="RevealPassword_MouseLeave">
-                                            <materialDesign:PackIcon Kind="Eye" Width="18" Height="18"/>
-                                        </Button>
-                                    </Grid>
-                                    <TextBox Style="{StaticResource MaterialDesignOutlinedTextBox}"
+											<materialDesign:PackIcon Kind="Eye" Width="18" Height="18"/>
+										</Button>
+									</Grid>
+									<TextBox Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                              materialDesign:HintAssist.Hint="Opco"
                                              Text="{Binding Opco}" Margin="0,8,0,0"/>
-                                    <TextBox Style="{StaticResource MaterialDesignOutlinedTextBox}"
+									<TextBox Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                              materialDesign:HintAssist.Hint="Program"
                                              Text="{Binding Program}" Margin="0,8,0,0"/>
-                                    <DockPanel Margin="0,8,0,0">
-                                        <TextBox Style="{StaticResource MaterialDesignOutlinedTextBox}"
+									<DockPanel Margin="0,8,0,0">
+										<TextBox Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                                  materialDesign:HintAssist.Hint="Working Directory"
                                                  Text="{Binding WorkingDirectory}" />
-                                        <Button Content="Browse"
+										<Button Content="Browse"
                                                 Command="{Binding BrowseWorkingDirectoryCommand}"
                                                 Style="{StaticResource MaterialDesignOutlinedButton}"
                                                 Margin="8,0,0,0" />
-                                    </DockPanel>
-                                </StackPanel>
-                                <Separator Margin="0,12,0,12"/>
-                                <TextBlock Text="Presets" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                                <ComboBox x:Name="PresetsList"
+									</DockPanel>
+								</StackPanel>
+								<Separator Margin="0,12,0,12"/>
+								<TextBlock Text="Presets" FontWeight="SemiBold" Margin="0,0,0,4"/>
+								<ComboBox x:Name="PresetsList"
                                           ItemsSource="{Binding Presets}"
                                           SelectedItem="{Binding SelectedPreset}"
                                           DisplayMemberPath="Name"
                                           Height="Auto"/>
-                                <Button Content="Load Preset"
+								<Button Content="Load Preset"
                                         Command="{Binding LoadPresetCommand}"
                                         CommandParameter="{Binding SelectedItem, ElementName=PresetsList}"
                                         Style="{StaticResource MaterialDesignRaisedButton}"
                                         Margin="0,8,0,0"/>
-                                <Button Content="Save Preset"
+								<Button Content="Save Preset"
                                         Command="{Binding SavePresetCommand}"
                                         Margin="0,8,0,0"/>
-                                <DockPanel Margin="0,8,0,0" LastChildFill="True">
-                                    <Button Content="Delete Preset"
+								<DockPanel Margin="0,8,0,0" LastChildFill="True">
+									<Button Content="Delete Preset"
                                             Command="{Binding DeletePresetCommand}"
                                             Style="{StaticResource MaterialDesignOutlinedButton}"
                                             DockPanel.Dock="Right"
                                             Width="170" />
-                                    <Button Content="Save As..."
+									<Button Content="Save As..."
                                             Command="{Binding SavePresetAsCommand}"
                                             Width="170"
                                             HorizontalAlignment="Left" />
-                                </DockPanel>
-                            </StackPanel>
-                        </ScrollViewer>
+								</DockPanel>
+							</StackPanel>
+						</ScrollViewer>
 
-                        <!-- ========== Right: Preview + Buttons + Clear Output + Output ========== -->
-                        <Grid Grid.Column="2">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <!-- Header -->
-                                <RowDefinition Height="*"/>
-                                <!-- Preview -->
-                                <RowDefinition Height="Auto"/>
-                                <!-- Buttons -->
-                                <RowDefinition Height="Auto"/>
-                                <!-- Clear Output Button -->
-                                <RowDefinition Height="Auto"/>
-                                <!-- Output Header -->
-                                <RowDefinition Height="*"/>
-                                <!-- Output Body -->
-                            </Grid.RowDefinitions>
+						<!-- ========== Right: Preview + Buttons + Clear Output + Output ========== -->
+						<Grid Grid.Column="2">
+							<Grid.RowDefinitions>
+								<RowDefinition Height="Auto"/>
+								<!-- Header -->
+								<RowDefinition Height="*"/>
+								<!-- Preview -->
+								<RowDefinition Height="Auto"/>
+								<!-- Buttons -->
+								<RowDefinition Height="Auto"/>
+								<!-- Clear Output Button -->
+								<RowDefinition Height="Auto"/>
+								<!-- Output Header -->
+								<RowDefinition Height="*"/>
+								<!-- Output Body -->
+							</Grid.RowDefinitions>
 
-                            <!-- Command Preview header + Templates picker -->
-                            <DockPanel Grid.Row="0" LastChildFill="True" Margin="0,0,0,8">
-                                <TextBlock Text="Command Preview"
+							<!-- Command Preview header + Templates picker -->
+							<DockPanel Grid.Row="0" LastChildFill="True" Margin="0,0,0,8">
+								<TextBlock Text="Command Preview"
                                            FontSize="16" FontWeight="SemiBold"
                                            VerticalAlignment="Center"
                                            DockPanel.Dock="Left"/>
-                                <StackPanel Orientation="Horizontal"
+								<StackPanel Orientation="Horizontal"
                                             HorizontalAlignment="Right"
                                             DockPanel.Dock="Right">
-                                    <TextBlock Text="Template:"
+									<TextBlock Text="Template:"
                                                VerticalAlignment="Center"
                                                Margin="12,0,6,0"/>
-                                    <ComboBox Style="{StaticResource MaterialDesignOutlinedComboBox}"
+									<ComboBox Style="{StaticResource MaterialDesignOutlinedComboBox}"
                                               ItemsSource="{Binding Templates}"
                                               SelectedItem="{Binding SelectedTemplate}"
                                               DisplayMemberPath="Name"
                                               Width="240" />
-                                    <Button Content="Edit"
+									<Button Content="Edit"
                                             Command="{Binding DataContext.EditTemplateCommand,RelativeSource={RelativeSource AncestorType=Window}}"
                                             Style="{StaticResource MaterialDesignOutlinedButton}"
                                             diag:PresentationTraceSources.TraceLevel="High" Height="45" Margin="12,0,6,0" Width="70"/>
-                                </StackPanel>
-                            </DockPanel>
+								</StackPanel>
+							</DockPanel>
 
-                            <!-- Command Preview body -->
-                            <Border Grid.Row="1"
+							<!-- Command Preview body -->
+							<Border Grid.Row="1"
                                     Padding="8" CornerRadius="4"
                                     Background="{DynamicResource MaterialDesignPaper}"
                                     BorderBrush="{DynamicResource MaterialDesignDivider}"
                                     BorderThickness="1">
-                                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                    <TextBox Text="{Binding TemplateContent, Mode=OneWay}"
+								<ScrollViewer VerticalScrollBarVisibility="Auto">
+									<TextBox Text="{Binding TemplateContent, Mode=OneWay}"
                                              IsReadOnly="True"
                                              TextWrapping="Wrap"
                                              AcceptsReturn="True"
@@ -361,56 +357,53 @@
                                              Background="Transparent"
                                              FontFamily="Consolas"
                                              FontSize="13" Height="292"/>
-                                </ScrollViewer>
-                            </Border>
+								</ScrollViewer>
+							</Border>
 
-                            <!-- Buttons (including existing Clear for preview) -->
-                            <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0">
-                                <Button Content="Run"
+							<!-- Buttons (including existing Clear for preview) -->
+							<StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0">
+								<Button Content="Run"
                                         Command="{Binding RunCommand}"
                                         Style="{StaticResource MaterialDesignRaisedButton}"/>
-                                <Button Content="Stop"
+								<Button Content="Stop"
                                         Command="{Binding StopCommand}"
                                         Style="{StaticResource MaterialDesignOutlinedButton}"
                                         Margin="8,0,0,0"/>
-                                <Button Content="Clear"
+								<Button Content="Clear"
                                         Command="{Binding ClearCommand}"
                                         Style="{StaticResource MaterialDesignOutlinedButton}"
                                         Margin="8,0,0,0"/>
-                                <CheckBox Content="Detailed Output (commands + exit codes)"
+								<CheckBox Content="Detailed Output (commands + exit codes)"
                                         IsChecked="{Binding ShowDetailedOutput}"
                                         VerticalAlignment="Center"/>
-                            </StackPanel>
+							</StackPanel>
 
-                            <!-- Clear Output button -->
-                            <Button Grid.Row="3" Content="Clear Output"
+							<!-- Clear Output button -->
+							<Button Grid.Row="3" Content="Clear Output"
                                     Command="{Binding ClearOutputCommand}"
                                     Style="{StaticResource MaterialDesignOutlinedButton}"
                                     HorizontalAlignment="Left" Margin="0,8,0,0"/>
 
-                            <!-- Output header -->
-                            <TextBlock Grid.Row="4"
+							<!-- Output header -->
+							<TextBlock Grid.Row="4"
                                        Text="Output"
                                        FontSize="16" FontWeight="SemiBold"
                                        Margin="0,12,0,8" />
 
-                            <!-- Output body -->
-                            <Border Grid.Row="5"
+							<!-- Output body -->
+							<Border Grid.Row="5"
                                     Padding="8" CornerRadius="4"
                                     Background="{DynamicResource MaterialDesignPaper}"
                                     BorderBrush="{DynamicResource MaterialDesignDivider}"
                                     BorderThickness="1">
-                                <ListBox x:Name="OutputList"
-                                         ItemsSource="{Binding OutputLines}"
-                                         FontFamily="Consolas"
-                                         FontSize="12"
-                                         Background="Transparent"
-                                         BorderThickness="0"/>
-                            </Border>
-                        </Grid>
-                    </Grid>
-                </TabItem>
-            </TabControl>
-        </DockPanel>
-    </materialDesign:DialogHost>
+								<ScrollViewer VerticalScrollBarVisibility="Auto">
+									<TextBox x:Name="OutputTextBox" Text="{Binding OutputText, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" FontFamily="Consolas" FontSize="12" Background="Transparent" BorderThickness="0"/>
+								</ScrollViewer>
+							</Border>
+						</Grid>
+					</Grid>
+				</TabItem>
+			</TabControl>
+		</DockPanel>
+	</materialDesign:DialogHost>
 </Window>
