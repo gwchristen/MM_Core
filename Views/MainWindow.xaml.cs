@@ -18,8 +18,8 @@ namespace MMCore.Views
             {
                 if (DataContext is ViewModels.MainViewModel vm)
                 {
-                    vm.OutputLines.CollectionChanged -= OutputLines_CollectionChanged;
-                    vm.OutputLines.CollectionChanged += OutputLines_CollectionChanged;
+                    vm.PropertyChanged -= Vm_PropertyChanged;
+                    vm.PropertyChanged += Vm_PropertyChanged;
                 }
             }
 
@@ -27,17 +27,17 @@ namespace MMCore.Views
             this.DataContextChanged += (_, __) => HookVm();
         }
 
-        private void OutputLines_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        private void Vm_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
-            if (e.Action == NotifyCollectionChangedAction.Add)
+            if (e.PropertyName == nameof(MainViewModel.OutputText))
             {
-                // Find the active OutputList (Advanced tab) or OutputListSimple (Simple tab)
-                var outputList = this.FindName("OutputList") as ListBox ?? this.FindName("OutputListSimple") as ListBox;
-                if (outputList != null && outputList.Items.Count > 0)
+                // Auto-scroll the active output TextBox when output is appended
+                var outputTextBox = this.FindName("OutputTextBox") as TextBox ?? this.FindName("OutputTextBoxSimple") as TextBox;
+                if (outputTextBox != null)
                 {
                     Application.Current.Dispatcher.BeginInvoke(new Action(() =>
                     {
-                        outputList.ScrollIntoView(outputList.Items[^1]);
+                        outputTextBox.ScrollToEnd();
                     }), DispatcherPriority.Background);
                 }
             }

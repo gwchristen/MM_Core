@@ -265,7 +265,7 @@ namespace MMCore.ViewModels
 
         private void ClearOutput()
         {
-            OutputLines.Clear();
+            OutputText = string.Empty;
         }
 
         private void ClearPreview()
@@ -469,7 +469,7 @@ namespace MMCore.ViewModels
                 // Show the command in detailed mode (like CommandRunner)
                 if (showDetailed)
                 {
-                    OutputLines.Add("> " + command);
+                    AppendOutput("> " + command);
                 }
 
                 _runCts?.Cancel();
@@ -491,11 +491,11 @@ namespace MMCore.ViewModels
 
                 _currentProcess.OutputDataReceived += (s, e) =>
                 {
-                    if (showDetailed) OnUI(() => OutputLines.Add(e.Data ?? ""));
+                    if (showDetailed) AppendOutput(e.Data ?? "");
                 };
                 _currentProcess.ErrorDataReceived += (s, e) =>
                 {
-                    if (showDetailed) OnUI(() => OutputLines.Add($"ERROR: {e.Data ?? ""}"));
+                    if (showDetailed) AppendOutput($"ERROR: {e.Data ?? ""}");
                 };
 
                 _currentProcess.Start();
@@ -507,14 +507,14 @@ namespace MMCore.ViewModels
                 // Show exit code in detailed mode (like CommandRunner)
                 if (showDetailed)
                 {
-                    OutputLines.Add($"[exit {_currentProcess.ExitCode}]");
+                    AppendOutput($"[exit {_currentProcess.ExitCode}]");
                 }
             }
             catch (Exception ex)
             {
                 if (showDetailed || ex.Message.Contains("cannot find the file", StringComparison.OrdinalIgnoreCase))
                 {
-                    OutputLines.Add($"Error: {ex.Message}");
+                    AppendOutput($"Error: {ex.Message}");
                 }
             }
             finally
@@ -600,6 +600,13 @@ namespace MMCore.ViewModels
             set => Set(ref _outputLog, value);
         }
 
+        private string _outputText = string.Empty;
+        public string OutputText
+        {
+            get => _outputText;
+            private set => Set(ref _outputText, value);
+        }
+
         private void AppendOutput(string text)
         {
             if (string.IsNullOrEmpty(text)) return;
@@ -610,7 +617,7 @@ namespace MMCore.ViewModels
                     ? $"[{DateTime.Now:HH:mm:ss}] {text}"
                     : text;
 
-                OutputLines.Add(line); // ✅ FIXED: no nested OnUI
+                OutputText += (string.IsNullOrEmpty(OutputText) ? "" : Environment.NewLine) + line;
                 OutputLog = string.IsNullOrEmpty(OutputLog)
                     ? line
                     : $"{OutputLog}{Environment.NewLine}{line}";
@@ -1122,6 +1129,7 @@ namespace MMCore.ViewModels
         }
 
 
+
         #endregion
 
         #region Theme (minimal + resilient)
@@ -1168,7 +1176,7 @@ namespace MMCore.ViewModels
             }
         }
 
-        public ObservableCollection<string> MdixPrimaryColors { get; } = new(new[] { "Red", "Pink", "Purple", "DeepPurple", "Indigo", "Blue", "LightBlue", "Cyan", "Teal", "Green", "LightGreen", "Lime", "Yellow", "Amber", "Orange", "DeepOrange", "Brown", "BlueGrey", "Grey" });
+        public ObservableCollection<string> MdixPrimaryColors { get; } = new(new[] { "Red", "Pink", "Purple", "DeepPurple", "Indigo", "Blue", "LightBlue", "Cyan", "Teal", "Green", "LightGreen", "Lime", "Yellow", "Amber", "Orange", "DeepOrange", "Brown", "Grey", "BlueGrey" });
         public ObservableCollection<string> MdixSecondaryColors { get; } = new(new[] { "Red", "Pink", "Purple", "DeepPurple", "Indigo", "Blue", "LightBlue", "Cyan", "Teal", "Green", "LightGreen", "Lime", "Yellow", "Amber", "Orange", "DeepOrange" });
 
         private void ApplyTheme()
